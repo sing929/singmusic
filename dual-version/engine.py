@@ -193,8 +193,17 @@ def validate(jobdir,config):
         checks[kind]={'seconds':duration,'sample_rate':sr,'channels':data.shape[1],'rms':rms,'peak':peak}
     subprocess.run([str(FFMPEG),'-nostdin','-y','-v','error','-i',str(jobdir/'result.wav'),'-c:a','libmp3lame','-b:a','320k',str(jobdir/'result.mp3')],check=True,creationflags=CREATE_NO_WINDOW,timeout=180)
     files['mp3']='result.mp3'
+    if config.get('output_name'):
+        from generation_controls import output_name
+        # Leave room for the complete Windows path and extension.
+        limit=max(20,min(200,240-len(str(jobdir).encode('utf-16-le'))//2-5))
+        stem=output_name('',config['output_name'],limit)
+        for kind,ext in (('result','.wav'),('mp3','.mp3')):
+            filename=stem+ext
+            (jobdir/files[kind]).replace(jobdir/filename)
+            files[kind]=filename
     write_json(jobdir/'result.json',{'files':files,'checks':checks,
-        'notice':'保留原唱模式已做自动对齐，仍需试听复核。' if config['mode']=='preserve' else ('YuE2 按歌词和目标要求自由重创；旋律、段落与声音可能变化，请试听复核。' if config.get('melody_mode')=='free' else 'YuE2 根据识别的旋律重新演绎；人声与歌词可能变化，请试听复核。')})
+        'notice':('已按纯音乐要求生成，跳过歌词识别；请试听复核。'+('自由重创允许旋律及段落变化。' if config.get('melody_mode')=='free' else '')) if config.get('instrumental') else ('保留原唱模式已做自动对齐，仍需试听复核。' if config['mode']=='preserve' else ('YuE2 按歌词和目标要求自由重创；旋律、段落与声音可能变化，请试听复核。' if config.get('melody_mode')=='free' else 'YuE2 根据识别的旋律重新演绎；人声与歌词可能变化，请试听复核。'))})
 
 def reuse_analysis(jobdir,config):
     """Only reuse preprocessing of this pair's identical source; never generated audio or semantic tokens."""
@@ -204,8 +213,10 @@ def reuse_analysis(jobdir,config):
     try:
         old=json.loads((prior/'config.json').read_text(encoding='utf-8'))
         if any(old.get(k)!=config.get(k) for k in ('source','start','duration','lyrics','mode','pair_id')):return False
+        if bool(old.get('instrumental'))!=bool(config.get('instrumental')):return False
         if not (prior/'preprocessing.json').exists():return False
         for name in ('lyrics.json','melody.abc'):
+            if name=='lyrics.json' and config.get('instrumental'):continue
             if (prior/name).exists():shutil.copy2(prior/name,jobdir/name)
         stems=prior/'original-stems'
         if (stems/'stems.json').exists():
@@ -228,13 +239,15 @@ def run_pipeline(jobdir,config):
     reused=reuse_analysis(jobdir,config)
     if config['mode']=='preserve' and not reused:
         progress('separating','正在分离原唱与伴奏');stage('separate-original')
-    elif not reused and config.get('profile','quality')!='fast' and not config.get('lyrics','').strip() and config.get('auto_lyrics',True):
+    elif not reused and not config.get('instrumental') and config.get('profile','quality')!='fast' and not config.get('lyrics','').strip() and config.get('auto_lyrics',True):
         progress('separating','正在提取人声以识别歌词')
         try:stage('separate-original')
         except subprocess.CalledProcessError:
             # Lyrics are optional. Use the original mix if vocal extraction fails.
             (jobdir/'error.json').unlink(missing_ok=True)
-    if not reused and not config.get('lyrics','').strip() and config.get('auto_lyrics',True):
+    if config.get('instrumental'):
+        write_json(jobdir/'lyrics.json',{'text':'','source':'instrumental','notice':'纯音乐：已跳过歌词读取与识别。'})
+    elif not reused and not config.get('lyrics','').strip() and config.get('auto_lyrics',True):
         progress('lyrics','正在本机识别歌词')
         stage('lyrics')
     write_json(jobdir/'preprocessing.json',{'completed_at':time.time()})

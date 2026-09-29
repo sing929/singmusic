@@ -5,6 +5,7 @@ Reference score is unchanged. Free mode explicitly omits it (cot=off).
 """
 import json
 import math
+import re
 from pathlib import Path
 
 RELEASE = json.loads(Path(__file__).with_name('release.json').read_text(encoding='utf-8'))
@@ -57,6 +58,17 @@ def build_caption(style, instructions='', variant_instructions=''):
     base = style if instructions.strip() or variant_instructions.strip() else preset
     return ', '.join(filter(None, [base, instructions.strip(), variant_instructions.strip()]))
 
+
+def output_name(style, title, limit=200):
+    """A portable user-facing filename; originals and job IDs remain untouched."""
+    name = re.sub(r'[<>:"/\\|?*\x00-\x1f\x7f]', '_', f'{style} {title}')
+    name = re.sub(r'\s+', ' ', name).strip(' .')
+    # Windows counts UTF-16 code units, including surrogate pairs.
+    name = name.encode('utf-16-le')[:limit * 2].decode('utf-16-le', errors='ignore').rstrip(' .') or '作品'
+    if re.match(r'^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)', name, re.I):
+        name = '_' + name
+    return name
+
 def effective_controls(config):
     if not config.get('controls_version'):
         return {'change_strength': None, 'melody_mode': 'reference', 'cfg_scale': 1.0}
@@ -69,16 +81,19 @@ def effective_controls(config):
 def build_request(config, score, lyrics, steps):
     controls = effective_controls(config)
     preserve = config['mode'] == 'preserve'
+    instrumental = bool(config.get('instrumental'))
     caption = config['caption']
-    if preserve:
-        caption += ', instrumental only, no singing or vocals, retain reference melody and timing'
+    if preserve or instrumental:
+        caption += ', instrumental only, no singing or vocals'
+        if controls['melody_mode'] == 'reference':
+            caption += ', retain reference melody and timing'
     else:
         caption = ', '.join(filter(None, [caption, GENDERS.get(config.get('gender', 'auto'), ''),
             TONES.get(config.get('tone', 'natural'), ''), 'expressive vocal phrasing, fresh performance']))
     reference = controls['melody_mode'] == 'reference'
     if reference and not score.strip():
         raise ValueError('参考旋律模式需要有效乐谱。')
-    return {'style': caption, 'lyrics': '[Instrumental]' if preserve else lyrics,
+    return {'style': caption, 'lyrics': '[Instrumental]' if preserve or instrumental else lyrics,
         'abc': score if reference else '', 'cot': 'melody' if reference else 'off',
         'duration': config['duration'], 'lm_seed': config['seed'], 'seed': config['seed'],
         'steps': steps, 'cfg_scale': controls['cfg_scale'], 'output_format': 'wav24', 'peak_clip': 0,

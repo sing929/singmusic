@@ -153,8 +153,10 @@ def generate(directory, config):
             if not score.strip():score=backend.transcribe(directory/'source.wav')
             temporary=directory/'melody.new'
             temporary.write_text(score,encoding='utf-8');temporary.replace(score_path)
-        lyric_info = json.loads((directory/'lyrics.json').read_text(encoding='utf-8')) if (directory/'lyrics.json').exists() else {}
-        lyrics = config.get('lyrics','').strip() or lyric_info.get('text','')
+        lyrics = ''
+        if not config.get('instrumental'):
+            lyric_info = json.loads((directory/'lyrics.json').read_text(encoding='utf-8')) if (directory/'lyrics.json').exists() else {}
+            lyrics = config.get('lyrics','').strip() or lyric_info.get('text','')
         request = build_request(config, score, lyrics, PROFILES[config.get('profile','quality')])
         write_json(directory/'yue2-request.json',request)
         progress('generating','YuE2：'+('根据参考旋律改编' if controls['melody_mode']=='reference' else '按目标要求自由重创'))

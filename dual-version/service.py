@@ -1,10 +1,10 @@
 """Single-user offline music studio; loopback HTTP and serialized local jobs."""
 import json, math, os, re, secrets, subprocess, threading, time, traceback, uuid, wave
 from pathlib import Path
-from urllib.parse import urlsplit, unquote
+from urllib.parse import urlsplit, unquote, quote
 from http.server import ThreadingHTTPServer
 import server
-from generation_controls import RELEASE, VERSION, CONTROL_VERSION, DEFAULT_STRENGTH, LEGACY_INSTRUCTIONS, validate_controls, text_field, build_caption, effective_controls
+from generation_controls import RELEASE, VERSION, CONTROL_VERSION, DEFAULT_STRENGTH, LEGACY_INSTRUCTIONS, validate_controls, text_field, build_caption, effective_controls, output_name
 
 ROOT=Path(os.environ.get('SING_APP_ROOT',str(server.ROOT)))
 TEST=Path(os.environ.get('SING_LOCAL_TEST',str(ROOT.parent/'local-test')))
@@ -40,6 +40,7 @@ def public_track(t):return {k:v for k,v in t.items() if k!='source'}
 def public_job(directory):
     value=read(directory/'job.json')
     if not value:return None
+    value['output_name']=output_name(value.get('style',''),value['title'])
     value['timing_source']='active_time' if 'processing_seconds' in value else 'legacy_wall_time'
     value['processing_seconds']=processing_seconds(value)
     value['progress']=read(directory/'progress.json',{})
@@ -71,6 +72,9 @@ def prepare_job(payload):
     if not available():raise ValueError('YuE2 本地安装不完整。')
     mode=payload.get('mode','remix')
     if mode not in ('remix','preserve'):raise ValueError('请选择改编模式。')
+    instrumental=payload.get('instrumental',t.get('instrumental',False))
+    if not isinstance(instrumental,bool):raise ValueError('歌曲类型无效。')
+    if instrumental:mode='remix'
     duration=float(t['duration'])
     if not math.isfinite(duration) or not 5<=duration<=600:raise ValueError('歌曲长度须为 5 秒至 10 分钟。')
     seed=int(payload.get('seed',secrets.randbelow(2147483647)))
@@ -86,16 +90,17 @@ def prepare_job(payload):
     from yue2_engine import PROFILES, GENDERS, TONES
     profile=payload.get('profile','quality');gender=payload.get('gender','auto');tone=payload.get('tone','natural')
     if profile not in PROFILES or gender not in GENDERS or tone not in TONES:raise ValueError('速度或声音设置无效。')
-    if mode=='preserve':gender='auto';tone='natural'
+    if mode=='preserve' or instrumental:gender='auto';tone='natural'
     strength,melody=validate_controls(payload)
     if mode=='preserve':melody='reference'
     config={'profile':profile,'gender':gender,'tone':tone,'engine':'yue2','track_id':t['id'],'source':t['source'],'start':0,'duration':duration,'seed':seed,
-        'mode':mode,'caption':caption,'lyrics':lyrics,'auto_lyrics':True,'format':fmt,'style':style,
+        'mode':mode,'caption':caption,'lyrics':'' if instrumental else lyrics,'auto_lyrics':not instrumental,'instrumental':instrumental,'format':fmt,'style':style,
+        'output_name':output_name(style,t['title']),
         'app_version':VERSION,'controls_version':CONTROL_VERSION,'change_strength':strength,'melody_mode':melody,
         'instructions':instructions,'variant_instructions':variant_instructions}
     config['effective_controls']=effective_controls(config)
     identifier=uuid.uuid4().hex
-    return config,{'id':identifier,'engine':'yue2','track_id':t['id'],'title':t['title'],'style':config['style'],'mode':mode,
+    return config,{'id':identifier,'engine':'yue2','track_id':t['id'],'title':t['title'],'output_name':config['output_name'],'style':config['style'],'mode':mode,
         'duration':duration,'start':0,'state':'queued','created_at':time.time(),'attempt':0,'max_attempts':2,
         'config':{k:v for k,v in config.items() if k!='source'}}
 
@@ -271,11 +276,16 @@ class Handler(server.Handler):
         if match:
             directory=JOBS/match[1];meta=read(directory/'job.json',{});result=read(directory/'result.json',{})
             filename=result.get('files',{}).get(match[2])
-            if meta.get('state')!='completed' or filename not in ('result.wav','source.wav','vocals.wav','instrumental.wav','result.mp3'):self.send_error(404);return
-            self.send_file(directory/filename,head);return
+            # Only the declared audio file directly inside this job may be served.
+            if (meta.get('state')!='completed' or not isinstance(filename,str) or
+                '/' in filename or '\\' in filename or ':' in filename or
+                Path(filename).suffix.lower() not in ('.wav','.mp3') or
+                (directory/filename).resolve().parent!=directory.resolve()):self.send_error(404);return
+            name=output_name(meta.get('style',''),meta['title'])+Path(filename).suffix if match[2] in ('result','mp3') else None
+            self.send_file(directory/filename,head,name);return
         super().do_GET(head)
 
-    def send_file(self,path,head):
+    def send_file(self,path,head,download_name=None):
         if not path.is_file():self.send_error(404);return
         size=path.stat().st_size;start=0;end=size-1;status=200
         if self.headers.get('Range'):
@@ -286,6 +296,7 @@ class Handler(server.Handler):
             status=206
         self.send_response(status);self.send_header('Content-Type','audio/mpeg' if path.suffix=='.mp3' else 'audio/wav');self.send_header('Accept-Ranges','bytes')
         self.send_header('Content-Length',str(end-start+1));self.send_header('Cache-Control','no-cache')
+        if download_name:self.send_header('Content-Disposition',"inline; filename*=UTF-8''"+quote(download_name,safe=''))
         if status==206:self.send_header('Content-Range',f'bytes {start}-{end}/{size}')
         self.end_headers()
         if head:return
@@ -346,9 +357,10 @@ class Handler(server.Handler):
             if match:
                 with LOCK:
                     value=track(match[1])
-                    for key in ('lyrics','style','style_b','mode','hidden','gender','tone','change_strength','melody_mode','instructions'):
+                    for key in ('lyrics','style','style_b','mode','hidden','gender','tone','change_strength','melody_mode','instructions','instrumental'):
                         if key in payload:value[key]=payload[key]
                     if not isinstance(value.get('lyrics',''),str) or len(value.get('lyrics',''))>20000 or value.get('mode','') not in ('','remix','preserve') or len(str(value.get('style','')))>40 or not isinstance(value.get('hidden',False),bool):raise ValueError('歌曲设置无效。')
+                    if not isinstance(value.get('instrumental',False),bool):raise ValueError('歌曲类型无效。')
                     from yue2_engine import GENDERS,TONES
                     if value.get('gender','') not in ('',*GENDERS) or value.get('tone','') not in ('',*TONES) or len(str(value.get('style_b','')))>40:raise ValueError('声音或 B 版风格无效。')
                     validate_controls(value,inherit=True);text_field(value,'instructions')

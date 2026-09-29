@@ -40,3 +40,9 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 - Add Phonk, Hardstyle and Hardtekk to both A/B global and per-song options, with distinct descriptors passed to local YuE2.
 - Both global versions use style buttons. Per-song versions use dropdowns with inherit and custom-style editing; preserve saved custom values.
 - Deliver as v1.1.1, update the existing local application after backup and an idle queue, and commit/push maintained source to GitHub.
+
+## Confirmed instrumental and naming brief — 2026-09-29
+- Per-song type selection: vocal or instrumental. Instrumental applies to both A/B versions, skips lyric recognition and requests instrumental-only output from local YuE2.
+- Disable preserve-original and vocal gender/timbre for instrumental songs while retaining style, strength, and reference/free melody choices. Preserve saved lyrics and vocal preferences so switching back restores them.
+- Name finished works and WAV/MP3 downloads as style followed by the original title, e.g. Lo-fi Justin Bieber - Baby. Preserve original tracks and historical job metadata.
+- Update the original local application after backup and an idle queue, then commit and push maintained source to GitHub.

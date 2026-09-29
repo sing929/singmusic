@@ -25,6 +25,9 @@
 !/dual-version/VALIDATION-v1.1.0.json
 !/dual-version/VALIDATION-v1.1.1.json
 !/dual-version/benchmark_styles.py
+!/dual-version/test_instrumental.py
+!/dual-version/benchmark_instrumental.py
+!/dual-version/VALIDATION-v1.2.0.json
 !/sing-studio-batch-preview/
 /sing-studio-batch-preview/*
 !/sing-studio-batch-preview/src/
