@@ -1,0 +1,82 @@
+{
+  "version": "1.1.0",
+  "real_inference": true,
+  "subjective_listening_verified": false,
+  "runs": [
+    {
+      "label": "reference-low",
+      "exit_code": 0,
+      "seconds": 45.15,
+      "requested_duration": 30,
+      "strength": 0,
+      "melody_mode": "reference",
+      "actual_duration": 29.998666666666665,
+      "sample_rate": 48000,
+      "channels": 2,
+      "finite": true,
+      "peak": 0.9999997615814209,
+      "rms": 0.14921901542153992,
+      "sha256": "287a3fc71ea5a38f1b0e43afbe3294ebf7dcfd13e0184aa099420b46cda041f9",
+      "cfg_scale": 1.0,
+      "cot": "melody",
+      "abc_present": true,
+      "replay_cfg": 1.0
+    },
+    {
+      "label": "reference-high",
+      "exit_code": 0,
+      "seconds": 32.56,
+      "requested_duration": 30,
+      "strength": 100,
+      "melody_mode": "reference",
+      "actual_duration": 29.998666666666665,
+      "sample_rate": 48000,
+      "channels": 2,
+      "finite": true,
+      "peak": 0.9999998807907104,
+      "rms": 0.15559247388545602,
+      "sha256": "d32b1e687bda26cfe55efa503255899d442994e9662365b03488f93c38e4a2ff",
+      "cfg_scale": 1.8,
+      "cot": "melody",
+      "abc_present": true,
+      "replay_cfg": 1.8
+    },
+    {
+      "label": "free-full",
+      "exit_code": 0,
+      "seconds": 206.41,
+      "requested_duration": 166.53352083333334,
+      "strength": 100,
+      "melody_mode": "free",
+      "actual_duration": 166.51866666666666,
+      "sample_rate": 48000,
+      "channels": 2,
+      "finite": true,
+      "peak": 0.9999998807907104,
+      "rms": 0.14818541160517038,
+      "sha256": "5a30acc22a1f4d6c3da4c93076f48fdc36d08ba5c0cea9d73c3d54b75d09da16",
+      "cfg_scale": 1.8,
+      "cot": "off",
+      "abc_present": false,
+      "replay_cfg": 1.8
+    }
+  ],
+  "passed": true,
+  "backend_regression_tests": 8,
+  "controls_regression_tests": 5,
+  "frontend_packaging_tests": 4,
+  "browser_checks": [
+    "Strength slider to 100 and reload persistence",
+    "Per-song strength 0 overrides global 100 in actual API batch",
+    "Per-song reference overrides global free",
+    "Independent A/B instructions reach persisted caption",
+    "Preserve mode disables gender tone and melody freedom",
+    "Version and release notes match backend",
+    "All songs follow shared settings clears overrides and retains lyrics"
+  ],
+  "installation": {
+    "version": "1.1.0",
+    "preserved_metadata_files": 70,
+    "passed": true
+  }
+}

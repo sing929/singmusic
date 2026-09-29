@@ -1,0 +1,47 @@
+# Publish only the maintained application source. Imported songs, lyrics, model
+# weights, credentials, local settings, generated audio and validation workdirs
+# must never enter this repository.
+/*
+!/.gitignore
+!/README.md
+!/CHANGELOG.md
+!/HANDOFF.md
+!/AGENTS.md
+!/dual-version/
+/dual-version/*
+!/dual-version/service.py
+!/dual-version/engine.py
+!/dual-version/yue2_engine.py
+!/dual-version/generation_controls.py
+!/dual-version/release.json
+!/dual-version/server.py
+!/dual-version/lyrics.py
+!/dual-version/asr_worker.py
+!/dual-version/asr-paths.example.json
+!/dual-version/test_backend.py
+!/dual-version/test_controls.py
+!/dual-version/benchmark_controls.py
+!/dual-version/deploy-release.ps1
+!/dual-version/VALIDATION-v1.1.0.json
+!/sing-studio-batch-preview/
+/sing-studio-batch-preview/*
+!/sing-studio-batch-preview/src/
+!/sing-studio-batch-preview/scripts/
+!/sing-studio-batch-preview/tests/
+!/sing-studio-batch-preview/worker/
+!/sing-studio-batch-preview/.openai/
+!/sing-studio-batch-preview/.openai/hosting.json
+!/sing-studio-batch-preview/AGENTS.md
+!/sing-studio-batch-preview/package.json
+!/sing-studio-batch-preview/package-lock.json
+!/sing-studio-batch-preview/pnpm-lock.yaml
+!/sing-studio-batch-preview/pnpm-workspace.yaml
+!/sing-studio-batch-preview/index.html
+!/sing-studio-batch-preview/vite.config.mjs
+__pycache__/
+*.pyc
+.env*
+node_modules/
+dist/
+data/
+backups/

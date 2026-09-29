@@ -1,0 +1,4 @@
+{
+  "python": "C:/path/to/local-asr-env/Scripts/python.exe",
+  "model": "C:/path/to/local-whisper-model"
+}

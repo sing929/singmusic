@@ -1,0 +1,39 @@
+# Sing Studio · v1.1.0
+
+本机 YuE2 整首音乐改编工作室。批量导入音频、可选歌词、A/B 完整版本、原唱保留、收藏和可恢复移除。音频、歌词及推理留在电脑上。
+
+这次更新修复了旧版力度未传入 YuE2、不同风格共用固定电钢琴描述的问题。
+
+## 使用新的改编控制
+
+- **风格与音色力度**：0–100，默认 75。0 仍按要求生成；100 加强目标风格和声音引导，不是音量控制。
+- **参考原曲旋律**：保留识别的乐谱，让模型改编演奏和声音。
+- **自由重创**：使用歌词和要求，解除原曲乐谱约束，允许改变旋律、节奏、段落；时长仍为原曲全长。
+- **保留原唱**：原录音的人声不变，力度用于伴奏，强制保留参考旋律。
+- 支持统一要求、A/B 补充要求，以及逐首力度、旋律和要求。逐首要求替代统一要求，A/B 补充仍会加入。留空要求时各风格使用独立编曲描述。
+- 顶部显示版本和更新记录；新作品显示生成时的版本、参数。旧作品标为历史版本，不补造版本号。
+- 若看到独立设置提示，可点“全部歌曲跟随统一”，让上方风格和声音选择真正应用到所有列出的歌曲；歌词保留。
+
+声音性别、音色和文字指令由生成模型引导，不能保证每次完全遵从。力度增大可能更慢或出现声音失真；可降到 50–75 再试。自由重创与原曲不再保证同旋律。
+
+## 源码与本机环境
+
+- `sing-studio-batch-preview/src/`：React 界面。
+- `dual-version/`：当前 Python 后端、YuE2 适配、验证和更新脚本（名称沿用之前工作区）。
+- `dual-version/release.json`：界面和后端共用的版本来源；`CHANGELOG.md` 保留完整更新记录。
+- 现有 Windows 应用依赖外置的本机运行环境；仓库不是附带模型的独立安装包。需要现有 `local-test/ace-env`、FFmpeg、YuE2 GGUF 模型及运行库；原唱保留需要 UVR。Whisper 单独环境的路径参见 `asr-paths.example.json`。
+- 不含歌曲、歌词、模型、生成结果、私有配置或第三方环境，也不自动安装它们。
+
+构建前端：在 `sing-studio-batch-preview/` 使用现有 Node 环境运行 `npm ci`（首次准备依赖）、`npm run build` 和 `npm run test:sites`。构建保留原有 Sites 兼容包装；生产功能必须连接本机 Python 服务，本次不发布云站点。
+
+后端验证：用现有音乐环境的 Python 运行 `dual-version/test_controls.py`；运行 `test_backend.py` 前设置 `SING_LOCAL_TEST` 为本机 runtime 目录。后者需要既有示例音频与模型文件来验证可用性，推理本身使用测试进程。真实推理验证另用 `benchmark_controls.py --runtime ... --installed-app ... --output ...`，结果目录须留在 Git 外。
+
+更新现有安装：先完成构建和验证，再使用 `dual-version/deploy-release.ps1 -AppRoot <现有 sing-studio 目录>`。脚本拒绝活动队列，备份应用代码和前端，保留用户数据，并启动原有本机入口。仅用于已安装应用，不创建或下载推理环境。
+
+## 以后每次更新
+
+更新 `release.json` 和前端 package / lock 版本、追加 `CHANGELOG.md`、记录验证和 handoff，然后提交并打 `vX.Y.Z` 标签。新增兼容功能增加次版本，修复增加修订号，破坏性变更增加主版本。不要复用或覆盖已经推送的版本标签。
+
+力度当前映射为语义 CFG `1 + 0.008 × 力度`，范围 1.0–1.8；CFG 同时影响风格、声音及歌词条件，不是独立的人声音色转换器。自由模式发送 `cot=off, abc=""`，参考模式发送 `cot=melody` 及完整参考谱；不复用成品或语义 token。
+
+协议参考：[yue2.cpp 架构与请求字段](https://github.com/ServeurpersoCom/yue2.cpp/blob/master/docs/ARCHITECTURE.md)、[YuE 官方生成与翻唱说明](https://github.com/multimodal-art-projection/YuE/blob/main/skills/yue2-music/references/generation-and-covers.md)。以当前安装运行库的实际验证为准。
