@@ -18,6 +18,9 @@ STYLE_TAGS = {
     'Jazz': 'jazz, swinging rhythm, acoustic piano trio, upright bass, brushed drums, improvised fills',
     'Acoustic': 'acoustic folk, fingerpicked acoustic guitar, organic percussion, sparse unplugged arrangement',
     'Remix': 'electronic dance remix, four on the floor kick, driving synth bass, energetic synthesizers, dance arrangement',
+    'Phonk': 'phonk, gritty Memphis rap atmosphere, distorted 808 bass, cowbell melody, punchy trap drums, dark lo-fi texture',
+    'Hardstyle': 'hardstyle, hard distorted pitched kick, reverse bass, driving four on the floor rhythm, euphoric supersaw lead, dramatic builds and drops',
+    'Hardtekk': 'hardtekk, rapid pounding four on the floor kicks, clipped percussive bass, raw repetitive rave groove, minimal abrasive synth stabs',
 }
 GENDERS = {'auto': '', 'male': 'male vocals, solo male singer', 'female': 'female vocals, solo female singer'}
 TONES = {
@@ -50,7 +53,8 @@ def text_field(payload, key, limit=900):
 def build_caption(style, instructions='', variant_instructions=''):
     # Genre presets supply defaults only. Explicit requirements replace their
     # instrumentation, avoiding "piano trio" fighting "guitar only" requests.
-    base = style if instructions.strip() or variant_instructions.strip() else STYLE_TAGS.get(style, style)
+    preset = next((tags for name, tags in STYLE_TAGS.items() if name.casefold() == style.strip().casefold()), style)
+    base = style if instructions.strip() or variant_instructions.strip() else preset
     return ', '.join(filter(None, [base, instructions.strip(), variant_instructions.strip()]))
 
 def effective_controls(config):

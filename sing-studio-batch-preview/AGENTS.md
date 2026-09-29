@@ -35,3 +35,8 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 - Keep independent genre descriptions, explicit A/B requirements and per-song overrides.
 - Show app release and generated-with version; update release.json, package/lock versions and CHANGELOG.md each release.
 - Upload maintained source to the user-designated sing929/singmusic repository; exclude private audio, lyrics, state snapshots, credentials and models.
+
+## Confirmed style-selection brief — 2026-09-29
+- Add Phonk, Hardstyle and Hardtekk to both A/B global and per-song options, with distinct descriptors passed to local YuE2.
+- Both global versions use style buttons. Per-song versions use dropdowns with inherit and custom-style editing; preserve saved custom values.
+- Deliver as v1.1.1, update the existing local application after backup and an idle queue, and commit/push maintained source to GitHub.

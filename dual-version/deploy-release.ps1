@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$AppRoot)
+param([Parameter(Mandatory=$true)][string]$AppRoot,[switch]$AllowPausedQueue)
 $ErrorActionPreference='Stop'
 $app=(Resolve-Path -LiteralPath $AppRoot).Path
 $workspace=Split-Path -Parent $PSScriptRoot
@@ -12,9 +12,14 @@ if(-not (Test-Path -LiteralPath (Join-Path $client 'index.html'))){throw 'Build 
 $validation=Get-Content -LiteralPath (Join-Path $PSScriptRoot ('VALIDATION-v'+$release.version+'.json')) -Raw | ConvertFrom-Json
 if(-not $validation.passed){throw 'Release validation must pass first'}
 function Assert-Idle {
+    $settingsPath=Join-Path $app 'data\settings.json'
+    $paused=$false
+    if(Test-Path -LiteralPath $settingsPath){$paused=(Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json).paused -eq $true}
+    if($AllowPausedQueue -and -not $paused){throw 'Paused-queue update requires paused settings before installation'}
     foreach($path in (Get-ChildItem -Path (Join-Path $app 'data\jobs\*\job.json') -File)){
         $job=Get-Content -LiteralPath $path.FullName -Raw | ConvertFrom-Json
-        if($job.state -in @('running','queued')){throw 'Active user jobs: defer update until queue is idle'}
+        if($job.state -eq 'running'){throw 'Running user job: wait for it to finish before updating'}
+        if($job.state -eq 'queued' -and -not ($AllowPausedQueue -and $paused)){throw 'Queued user jobs: wait, or explicitly authorize a paused-queue update'}
     }
 }
 Assert-Idle
@@ -60,8 +65,9 @@ for($i=0;$i -lt 30;$i++){
     Start-Sleep -Milliseconds 300
 }
 if(-not $verified){throw ('Installed service did not report expected version; backup: '+$backup)}
+if($AllowPausedQueue -and -not $state.settings.paused){throw 'Queue pause was not preserved during update'}
 foreach($entry in $hashes){if((Get-FileHash -LiteralPath $entry.path).Hash -ne $entry.sha256){throw ('Existing data changed: '+$entry.path)}}
 $report=Join-Path $workspace '.validation\deployment.json'
 New-Item -ItemType Directory -Path (Split-Path -Parent $report) -Force | Out-Null
-@{version=$release.version;backup=$backup;installed_at=(Get-Date -Format o);data_files_unchanged=$hashes.Count;hashes=$hashes;passed=$true} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $report -Encoding utf8NoBOM
+@{version=$release.version;backup=$backup;installed_at=(Get-Date -Format o);data_files_unchanged=$hashes.Count;hashes=$hashes;paused_queue_authorized=[bool]$AllowPausedQueue;passed=$true} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $report -Encoding utf8NoBOM
 Write-Output ('Installed v'+$release.version+'; '+$hashes.Count+' existing metadata files unchanged; backup: '+$backup)

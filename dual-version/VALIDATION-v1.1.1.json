@@ -1,0 +1,107 @@
+{
+  "limits": [
+    "30-second reference-mode samples with fast profile; no new full-song or preserve-vocal synthesis acceptance",
+    "Preset descriptions guide YuE2; exact genre and vocal adherence require listening"
+  ],
+  "passed": true,
+  "frontend": {
+    "build": true,
+    "packaging_tests": 4
+  },
+  "backend": {
+    "deployment_guard_cases": 12,
+    "regressions": 8,
+    "control_regressions": 6
+  },
+  "browser": {
+    "passed": true,
+    "isolated_data": true,
+    "checks": [
+      "A/B preset buttons and all three new genres",
+      "B per-song dropdown and global inheritance",
+      "Global and per-song custom B saved and persisted on reload",
+      "Previously saved custom A/B names retained",
+      "Empty custom save disabled; cancelled draft leaves preset unchanged",
+      "UI batch produced Phonk A and per-song Hardtekk B with dedicated captions",
+      "Forest-green/ivory desktop layout visually inspected"
+    ]
+  },
+  "subjective_listening_verified": false,
+  "version": "1.1.1",
+  "inference": {
+    "version": "1.1.1",
+    "real_inference": true,
+    "subjective_listening_verified": false,
+    "runs": [
+      {
+        "style": "Phonk",
+        "exit_code": 0,
+        "seconds": 43.69,
+        "requested_duration": 30.0,
+        "actual_duration": 29.998666666666665,
+        "sample_rate": 48000,
+        "channels": 2,
+        "finite": true,
+        "rms": 0.15722673078609536,
+        "preset_in_request": true,
+        "preset_in_replay": true,
+        "seed": 20260929,
+        "cfg_scale": 1.6,
+        "cot": "melody",
+        "score_sha256": "fb1f1994fd58b5f2cf2301ec920bfa5391fb0465b91e2f2a6ec50dbc4b3abe91",
+        "mp3_exists": true,
+        "passed": true
+      },
+      {
+        "style": "Hardstyle",
+        "exit_code": 0,
+        "seconds": 32.28,
+        "requested_duration": 30.0,
+        "actual_duration": 29.998666666666665,
+        "sample_rate": 48000,
+        "channels": 2,
+        "finite": true,
+        "rms": 0.2046363240805169,
+        "preset_in_request": true,
+        "preset_in_replay": true,
+        "seed": 20260929,
+        "cfg_scale": 1.6,
+        "cot": "melody",
+        "score_sha256": "fb1f1994fd58b5f2cf2301ec920bfa5391fb0465b91e2f2a6ec50dbc4b3abe91",
+        "mp3_exists": true,
+        "passed": true
+      },
+      {
+        "style": "Hardtekk",
+        "exit_code": 0,
+        "seconds": 32.83,
+        "requested_duration": 30.0,
+        "actual_duration": 29.998666666666665,
+        "sample_rate": 48000,
+        "channels": 2,
+        "finite": true,
+        "rms": 0.20766739236606385,
+        "preset_in_request": true,
+        "preset_in_replay": true,
+        "seed": 20260929,
+        "cfg_scale": 1.6,
+        "cot": "melody",
+        "score_sha256": "fb1f1994fd58b5f2cf2301ec920bfa5391fb0465b91e2f2a6ec50dbc4b3abe91",
+        "mp3_exists": true,
+        "passed": true
+      }
+    ],
+    "passed": true
+  },
+  "date": "2026-09-29",
+  "installation": {
+    "installed_browser_version_verified": "1.1.1",
+    "existing_metadata_files_unchanged": 113,
+    "installed_source_hashes_match": true,
+    "resumed_processing_verified": true,
+    "backup_created": true,
+    "passed": true,
+    "original_queue_state_restored": true,
+    "queued_jobs_unchanged": 9
+  }
+}

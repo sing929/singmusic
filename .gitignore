@@ -23,6 +23,8 @@
 !/dual-version/benchmark_controls.py
 !/dual-version/deploy-release.ps1
 !/dual-version/VALIDATION-v1.1.0.json
+!/dual-version/VALIDATION-v1.1.1.json
+!/dual-version/benchmark_styles.py
 !/sing-studio-batch-preview/
 /sing-studio-batch-preview/*
 !/sing-studio-batch-preview/src/

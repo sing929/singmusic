@@ -51,6 +51,18 @@ class ControlsTest(unittest.TestCase):
         self.assertEqual(controls.validate_controls({'change_strength':None},inherit=True),(None,''))
         self.assertEqual(controls.effective_controls({'strength':.65,'mode':'remix'})['cfg_scale'],1)
 
+    def test_new_genres_reach_engine_and_explicit_requirements_still_win(self):
+        for style, marker in [('Phonk','cowbell'),('Hardstyle','supersaw'),('Hardtekk','synth stabs')]:
+            with self.subTest(style=style):
+                caption=controls.build_caption(style)
+                request=controls.build_request(self.config(caption=caption),'SCORE','local test',6)
+                self.assertIn(marker,request['style'])
+                self.assertEqual(controls.build_caption(style.lower()),caption)
+                self.assertNotIn('electric piano',request['style'])
+                self.assertEqual(controls.build_caption(style,'guitar only'),style+', guitar only')
+                self.assertEqual(controls.build_caption(style,'','no drums'),style+', no drums')
+        self.assertEqual(controls.build_caption('My custom genre'),'My custom genre')
+
     def test_http_settings_tracks_and_batch_use_same_controls(self):
         with tempfile.TemporaryDirectory(prefix='sing-controls-') as tmp:
             os.environ['SING_APP_ROOT']=tmp
@@ -95,6 +107,20 @@ class ControlsTest(unittest.TestCase):
                     with self.assertRaises(urllib.error.HTTPError):api('/api/batch',payload)
                     self.assertEqual(len(service.jobs()),2)
                     self.assertEqual(api('/api/state')['release']['version'],controls.VERSION)
+                    for index,style in enumerate(('Phonk','Hardstyle','Hardtekk')):
+                        setting=api('/api/settings',{'style_b':style})
+                        self.assertEqual(setting['style_b'],style)
+                        record=api('/api/tracks/'+tid,{'style_b':style})
+                        self.assertEqual(record['style_b'],style)
+                        pair=api('/api/batch',{'request_id':f'new-style-http-batch-{index}',
+                            'items':[{'track_id':tid,'instructions':'','variants':[{'style':'Jazz'},{'style':record['style_b']}]}]})['jobs']
+                        b=service.read(service.JOBS/pair[1]['id']/'config.json')
+                        request=controls.build_request(b,'SCORE','local test',6)
+                        self.assertIn(controls.STYLE_TAGS[style],request['style'])
+                    custom=api('/api/tracks/'+tid,{'style_b':'Personal custom style'})
+                    self.assertEqual(custom['style_b'],'Personal custom style')
+                    inherited=api('/api/tracks/'+tid,{'style_b':''})
+                    self.assertEqual(inherited['style_b'],'')
             finally:
                 http.shutdown();http.server_close();thread.join()
 
