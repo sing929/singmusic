@@ -23,7 +23,7 @@
   "adjust_regressions": 8,
   "voice_regressions": 9,
   "voice_checks": [
-    "Settings: shared and per-song {a, b, octave} validation; job-level voice for A or B; whole-octave rule (>= 7 semitones apart, clamped to one octave).",
+    "Settings: shared and per-song {versions: ten switches A-J, octave} validation; job-level voice per version letter; whole-octave rule (>= 7 semitones apart, clamped to one octave); unusable stored shapes fall back to the default.",
     "Analysis: phrases split at gaps and at the quietest point of long regions; the reference clip drops pauses and needs 3 s of singing; pYIN median pitch.",
     "Runner with a stand-in engine: models load once, one call per phrase with F0 conditioning, no automatic pitch matching, octave, steps, CFG and fp16 as planned; CPU refused without the test flag; self-test.",
     "Conversion: phrases return to their exact positions, silence stays silent, loudness matches the generated vocal, remix with the generated accompaniment, generated.wav unchanged, engine errors reported, no-vocal results kept and labelled.",
@@ -43,7 +43,8 @@
     "Queue confirmation row; queued A/B jobs carry the per-song voice setting and Original Voice names; queue step and row labels",
     "My Works card and details show octave, phrases, steps and similarity; key/tempo preview name matches the backend name",
     "Engine missing: confirmation warns and disables confirm",
-    "375 px width without horizontal scrolling; no application console errors"
+    "375 px width without horizontal scrolling; no application console errors",
+    "After merging 1-10 versions: 3 versions with only C switched on queue three jobs where only C carries voice swap; per-song switches follow that song's version count; old-format stored settings fall back to defaults"
   ],
   "pending": [
     "Run seedvc-download.ps1 on the internet PC and seedvc-install.ps1 on the RTX 5070 PC; the GPU self-test must pass",
@@ -56,5 +57,6 @@
     "Processing time, VRAM use and timbre similarity on the RTX 5070 are not measured yet; benchmark_voice.py records them.",
     "Seed-VC suggests Python 3.10; the pinned set targets the app PC's existing Python and is confirmed only by the install self-test."
   ],
-  "local_artifacts_excluded_from_git": true
+  "local_artifacts_excluded_from_git": true,
+  "versions_regressions": 4
 }

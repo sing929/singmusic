@@ -11,6 +11,13 @@
   "control_regressions": 6,
   "instrumental_regressions": 6,
   "adjust_regressions": 8,
+  "version_regressions": 4,
+  "version_checks": [
+    "Defaults are ten distinct styles; legacy settings keep their A/B styles and fill the rest with unused presets.",
+    "Version style and instruction lists stay mirrored with style/style_b and instructions_a/b; invalid counts and lists are rejected without changing saved settings.",
+    "Per-song styles and counts persist; null follows the shared count.",
+    "Batches of 1 and 10 versions expand to letters A–J with one pair, shared analysis, distinct in-range seeds; duplicate styles, 0 and 11 versions are rejected without creating jobs."
+  ],
   "adjust_checks": [
     "Validation rejects out-of-range, fractional, boolean, string and unknown values for key, tempo, mode and reverb.",
     "Measured pitch and length after +12 semitones, 50% tempo, -5 semitones at 125%, and Slowed 80%, with both Rubber Band and the asetrate/atempo fallback.",
@@ -25,6 +32,7 @@
     "Queue confirmation shows the shared key/tempo row; queued A/B jobs carry the per-song override and new names",
     "Live pipeline shifted the reference with Rubber Band: 30 s to 33.333 s, -2 semitones (generation itself unavailable on the development PC)",
     "My Works dialog: name and length preview, derived Slowed 80% + Reverb 40 work completed in 4 s as 37.5 s WAV + MP3 under the original",
+    "Versions per song: legacy settings migrated, 4 version style groups, duplicate-style warning shown and cleared, per-song count 3 with version C set to Phonk queued exactly A/B/C jobs",
     "No browser console errors; forest-green and ivory layout kept"
   ],
   "pending": [

@@ -2,22 +2,22 @@
 
 ## 本次交付
 
-- 用户确认需求（2026-10-16）：换声的目标音色是**原曲演唱者**，即从导入的原曲用 UVR 分离出的原唱，不另给音色片段、不用 RVC 模型、不训练。只在**生成前**设置（统一 + 逐首，A / B 分别选择），已完成作品不提供换声再处理。换声引擎在 RTX 5070 应用电脑运行；用户在另一台联网的 i5 电脑下载安装包后拷贝到应用电脑。开发电脑不得下载或安装引擎。只对有权使用的声音换声。
+- 用户确认需求（2026-10-16）：换声的目标音色是**原曲演唱者**，即从导入的原曲用 UVR 分离出的原唱，不另给音色片段、不用 RVC 模型、不训练。只在**生成前**设置（统一 + 逐首，每个版本分别选择；合并 v1.3.0 的 1–10 个版本后为 A–J 每版一个开关），已完成作品不提供换声再处理。换声引擎在 RTX 5070 应用电脑运行；用户在另一台联网的 i5 电脑下载安装包后拷贝到应用电脑。开发电脑不得下载或安装引擎。只对有权使用的声音换声。
 - 引擎选择：Seed-VC v1 歌唱模型（`DiT_seed_v2_uvit_whisper_base_f0_44k_bigvgan_pruned_ft_ema_v2.pth`，44.1 kHz，F0 条件，零样本），代码固定在 `Plachtaa/seed-vc@51383efd921027683c89e5348211d93ff12ac2a8`（GPL-3.0，以独立程序调用）。开发前已在 GitHub 阅读该提交的 `inference.py`、`hf_utils.py`、配置与依赖，未下载或运行。
 - 新模块 `dual-version/voice_swap.py`（应用 Python 中运行）：设置校验（统一 / 逐首 `voice_swap = {a, b, octave}`，任务 `voice = {target: original, octave}`）、`available()`（以 `local-test/seed-vc/install.json` 自检通过为准）、乐句切分（10 ms 能量门限，长于 30 秒在最安静处切开）、原唱参考片段（去掉停顿，取最稳定的 20 秒）、pYIN 中位音高与整八度规则（相差 ≥ 7 个半音时移整八度，限 ±12）、调用换声、按原位置放回（10 ms 淡入淡出）、按原人声响度匹配增益、与新伴奏重新混音并防削波，写 `voice-swap.json`。
 - 新脚本 `dual-version/seedvc_runner.py`（在 Seed-VC 独立环境中运行）：切换到 Seed-VC 目录导入其 `inference`，模型只加载一次后逐乐句调用其 `main()`；不是 CUDA 时拒绝（测试可用 `SING_VOICE_ALLOW_CPU=1`）；用引擎自带 CAM++ 与 RMVPE 计算换声前后与原唱的音色相似度和音高误差；`--self-test` 供安装脚本检查显卡。PyTorch 2.6 起 `torch.load` 默认 `weights_only=True`，固定版本的检查点按旧方式加载（`TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1`，只针对固定的官方文件）。
-- 管线（`engine.run_pipeline`）：有换声时先检查引擎（未安装直接失败，不耗 GPU）；原曲变调变速时先保存 `source-unshifted.wav`，另行分离到 `reference-stems`，否则使用（或补做）`original-stems`；生成前做参考片段。生成后 `separate-generated` → `voice_swap.convert` → 混响 → 验证。`generated.wav` 保留供对比。A / B 复用分析时同时复制 `reference-stems`。结果说明附换声提示。
-- 服务（`service.py`）：设置与逐首保存 `voice_swap`；批次按 A / B 映射为任务 `voice`；保留原唱与纯音乐忽略换声；请求换声而引擎未安装时整批拒绝（不创建任务）；`/api/state` 的 `engines.voice`；作品名附 `Original Voice`（派生的变调变速作品继承）；完成作品返回 `voice_info` 摘要。
-- 界面：统一设置新增“换成原唱音色”面板（A / B 开关、音域、未安装提示与版权提醒）；逐首“单独调整”可跟随统一或单独设置；队列确认显示换声行，引擎未安装时显示警告并禁用确认；队列步骤、队列行、作品卡片、详情、使用说明与更新记录。沿用森林绿 / 米白。
+- 管线（`engine.run_pipeline`）：有换声时先检查引擎（未安装直接失败，不耗 GPU）；原曲变调变速时先保存 `source-unshifted.wav`，另行分离到 `reference-stems`，否则使用（或补做）`original-stems`；生成前做参考片段。生成后 `separate-generated` → `voice_swap.convert` → 混响 → 验证。`generated.wav` 保留供对比。各版本复用分析时同时复制 `reference-stems`。结果说明附换声提示。
+- 服务（`service.py`）：设置与逐首保存 `voice_swap = {versions: [10 个开关], octave}`；批次按版本字母映射为任务 `voice`；保留原唱与纯音乐忽略换声；请求换声而引擎未安装时整批拒绝（不创建任务）；`/api/state` 的 `engines.voice`；作品名附 `Original Voice`（派生的变调变速作品继承）；完成作品返回 `voice_info` 摘要。
+- 界面：统一设置新增“换成原唱音色”面板（按版本数量显示 A–J 开关、全部换声 / 全部不换声、音域、未安装提示与版权提醒）；逐首“单独调整”可跟随统一或单独设置；队列确认显示换声行，引擎未安装时显示警告并禁用确认；队列步骤、队列行、作品卡片、详情、使用说明与更新记录。沿用森林绿 / 米白。
 - 安装：`seedvc-requirements.txt`（torch / torchaudio 2.7.1+cu128 等固定版本）、`seedvc-download.ps1`（联网电脑：`pip wheel` 生成全部 wheel——其中 `julius`、`randomname` 只有源码包，在此构建——下载固定提交源码与 Hugging Face 模型，把符号链接转为普通文件，记录 SHA256）、`seedvc-install.ps1`（应用电脑离线：校验、用 ace-env 同一 Python 建独立 venv、离线安装、显卡自检，自检通过后最后写 `install.json`）。
 - 版本源、package / lock、README、CHANGELOG 同步为 1.4.0；`deploy-release.ps1` 文件清单加入 `voice_swap.py`、`seedvc_runner.py`；`.gitignore` 允许清单加入新文件。`benchmark_adjust.py` 与新 `benchmark_voice.py` 共用验证记录：`VALIDATION-v1.4.0.json` 的 `required_benchmarks` 为 adjust 与 voice，两者都通过才 `passed`。
 
 ## 本次验证（开发电脑 Xeon + GTX 1070，无 YuE2 / Seed-VC）
 
 - 前端生产构建与 4 项打包测试通过（`node_modules` 链接到同机 v1.3.0 克隆，锁文件除版本号外相同，未重新下载）。
-- 后端：原有 8 项 HTTP / 队列、6 项控制、6 项纯音乐、8 项变调变速回归通过；新增 `test_voice.py` 9 项通过。换声测试使用与 Seed-VC 接口一致的替代 `inference.py`，运行真实的 `seedvc_runner.py` 子进程：模型只加载一次、每乐句一次调用及参数（F0 条件、不自动调音高、八度、步数、CFG、fp16、参考片段）、静音段保持静音、乐句位置与音高、响度匹配、混音、生成原声不变、失败信息、无人声时跳过、自检与无显卡拒绝；管线顺序（未调整用 original-stems，变调时用未调整原唱的 reference-stems）、引擎缺失时零阶段失败、A / B 复用；HTTP 设置与逐首、A / B 映射、命名、保留原唱 / 纯音乐忽略、未安装时整批拒绝；派生作品命名、作品信息与结果说明；验证记录需全部基准通过。
+- 后端：原有 8 项 HTTP / 队列、6 项控制、6 项纯音乐、8 项变调变速、4 项多版本回归通过；新增 `test_voice.py` 9 项通过（共 41 项）。换声测试使用与 Seed-VC 接口一致的替代 `inference.py`，运行真实的 `seedvc_runner.py` 子进程：模型只加载一次、每乐句一次调用及参数（F0 条件、不自动调音高、八度、步数、CFG、fp16、参考片段）、静音段保持静音、乐句位置与音高、响度匹配、混音、生成原声不变、失败信息、无人声时跳过、自检与无显卡拒绝；管线顺序（未调整用 original-stems，变调时用未调整原唱的 reference-stems）、引擎缺失时零阶段失败、A / B 复用；HTTP 设置与逐首、按版本字母映射（含 3 个版本只换 C）、旧格式设置回退为默认、命名、保留原唱 / 纯音乐忽略、未安装时整批拒绝；派生作品命名、作品信息与结果说明；验证记录需全部基准通过。
 - 安装脚本：两份 PowerShell 解析无误；用假安装包在短路径做离线演练，校验、Python 识别、独立 venv、离线 pip、自检调用均按预期，自检失败时不写 `install.json`；已存在需 `-Replace`、文件损坏会被拒绝。固定的依赖版本已在 PyPI 与 PyTorch cu128 索引核对存在 cp311 Windows wheel（只查询，未下载）。
-- 隔离浏览器实际操作（替代安装、暂停的队列）：未安装时面板提示且开关不可用；安装后 A 开关、音域保存与刷新保持；逐首单独设置 A + B；队列确认的换声行；入队的 A / B 任务都带 `voice`（逐首降八度），名称 `R&B Demo Song (Original Voice)` / `Jazz Demo Song (Original Voice)`；作品卡片与详情的换声信息；换声作品的 Slowed 80% 预览名与后端名称一致 `Lo-fi Demo Song (Original Voice, Slowed 80%)`；未安装时确认对话框警告并禁用确认；375 px 宽无横向滚动；无应用报错（仅重启服务期间的连接拒绝）。
+- 隔离浏览器实际操作（替代安装、暂停的队列；合并多版本后复测：3 个版本只勾 C，入队 3 个任务仅 C 带换声并命名 `Lo-fi Demo Song (Original Voice)`，逐首开关随该曲版本数 3→2 显示，旧格式设置自动回退）：未安装时面板提示且开关不可用；安装后 A 开关、音域保存与刷新保持；逐首单独设置 A + B；队列确认的换声行；入队的 A / B 任务都带 `voice`（逐首降八度），名称 `R&B Demo Song (Original Voice)` / `Jazz Demo Song (Original Voice)`；作品卡片与详情的换声信息；换声作品的 Slowed 80% 预览名与后端名称一致 `Lo-fi Demo Song (Original Voice, Slowed 80%)`；未安装时确认对话框警告并禁用确认；375 px 宽无横向滚动；无应用报错（仅重启服务期间的连接拒绝）。
 - **未完成：应用电脑上的引擎安装与显卡自检、YuE2 + UVR + Seed-VC 实测、主观试听。** `VALIDATION-v1.4.0.json` 为 `passed: false`，部署脚本会拒绝安装，直到下面两个基准都通过。v1.3.0 的变调变速实测同样尚未在应用电脑完成，本次一并要求。
 
 ## 在联网的 i5 电脑上下载（约 6 GB）
@@ -30,7 +30,7 @@
 
 1. 拉取分支，在 `sing-studio-batch-preview/` 运行 `npm ci`、`npm run build`、`npm run test:sites`。
 2. 确认队列空闲后安装引擎：`powershell -ExecutionPolicy Bypass -File dual-version\seedvc-install.ps1 -Bundle <拷来的安装包> -Runtime <现有 local-test 目录>`。离线安装到 `<local-test>\seed-vc`，最后在显卡上自检；成功时显示显卡名称、torch 与 CUDA 版本。重装用 `-Replace`（旧目录改名保留）。
-3. 回归：用 ace-env 的 Python 并设置 `SING_LOCAL_TEST` 后运行 `test_controls.py`、`test_instrumental.py`、`test_adjust.py`、`test_voice.py`、`test_backend.py`。
+3. 回归：用 ace-env 的 Python 并设置 `SING_LOCAL_TEST` 后运行 `test_controls.py`、`test_instrumental.py`、`test_adjust.py`、`test_versions.py`、`test_voice.py`、`test_backend.py`。
 4. 实测（输出目录放在 Git 外）：
    - `dual-version\benchmark_adjust.py --runtime <local-test> --output <Git 外目录> --validation dual-version\VALIDATION-v1.4.0.json`（可加 `--source <纯伴奏 WAV>`）。
    - `dual-version\benchmark_voice.py --runtime <local-test> --output <Git 外目录> --source <本机有清楚人声的歌曲> --start <演唱段落秒数> --validation dual-version\VALIDATION-v1.4.0.json`。歌词用 `--lyrics-file <该段歌词>`，或把已安装应用的 `asr-paths.json` 复制到 `dual-version\` 由 Whisper 识别。两次运行：普通换声；Key -2 时目标音色取自未调整的原唱。检查显卡运行、换声后与原唱相似度提高、音高误差中位数 ≤ 50 音分、时长与命名。
@@ -46,14 +46,22 @@
 
 ## Git
 
-- 本分支 `feature/voice-swap-v1.4.0` 基于尚未合并的 `feature/key-tempo-v1.3.0`（PR #1），新 PR 以它为目标分支以便只审阅 v1.4.0 改动；先合并 PR #1，再合并本 PR，依次打 `v1.3.0`、`v1.4.0` 标签。禁止覆盖历史标签或 force push。
+- 本分支 `feature/voice-swap-v1.4.0` 基于尚未合并的 `feature/key-tempo-v1.3.0`（PR #1），并已合并其后加入的“每首 1–10 个版本”提交（2361540）；新 PR 以它为目标分支以便只审阅 v1.4.0 改动；先合并 PR #1，再合并本 PR，依次打 `v1.3.0`、`v1.4.0` 标签。禁止覆盖历史标签或 force push。
 - Git 只包含维护源码、文档及脱敏验证报告；替代运行环境、安装包、模型、测试音频与作品均在 Git 外。
 
 ---
 
 # Sing Studio v1.3.0 · 2026-10-16
 
-## 本次交付
+## 本次交付 · 多版本（同一 v1.3.0）
+
+- 用户要求“一首歌改编成不同版本，可以选择数量”。确认：每首 1–10 个生成版本，各版本不同风格；统一数量并允许逐首覆盖；放进 v1.3.0 同一个 PR，人声替换仍为之后的 v1.4.0。
+- 设置新增 `version_count`（1–10，默认 2）、`styles`（10 项）、`version_instructions`（10 项）；歌曲新增 `styles`（10 项，空值跟随统一）与 `version_count`（`null` 跟随统一）。`style` / `style_b`、`instructions_a` / `instructions_b` 始终与第 1、2 项同步保存，旧设置读入时自动补齐其余版本（未使用的预设）。
+- `create_batch` 接受 1–10 个 variants，字母 A–J，风格须不同（忽略大小写和首尾空格），第一个版本分析、其余复用；种子上限修正为不超过 2147483647。新增 Soul、Funk 预设。
+- 界面：每首版本数量选择、按数量显示的版本风格按钮组与补充要求、重复风格提示；逐首版本数与各版本风格下拉；底部、确认对话框、作品分组（“N 个版本”“N 版总处理用时”）与说明文字不再写死 A / B。
+- 验证：新增 `test_versions.py` 4 项（默认与旧设置迁移、列表与 A/B 同步、逐首覆盖、1/10 个版本展开、重复与超量拒绝、种子范围）；全部 32 项后端回归与 4 项打包测试通过。浏览器：旧设置迁移、4 个版本按钮组、重复提示与恢复、逐首 3 个版本并改 C 为 Phonk，实际入队 A/B/C 三个任务且名称带变调说明。
+
+## 本次交付 · 变调变速
 
 - 用户确认需求：变调与变速“两处都要”（生成前设置 + 已完成作品再处理），包含“独立调整”和“Slowed / Sped up”两种方式，并要可选混响。人声替换（voice swap）明确留到以后的单独更新，本次不做。
 - 新模块 `dual-version/audio_adjust.py`：校验（半音 -12～+12 整数、速度 50～150 整数、混响 0～100 整数、`independent` / `linked`）、作品名称说明、FFmpeg 滤镜（有 Rubber Band 时用 `rubberband`，否则 `asetrate` + `aresample` + `atempo` 链），以及基于固定种子的立体声卷积混响。输出 48 kHz 双声道并精确对齐目标帧数。
@@ -72,7 +80,7 @@
 ## 在应用电脑（i7-14700F + RTX 5070）上完成
 
 1. 拉取分支或合并后的 main，在 `sing-studio-batch-preview/` 运行 `npm ci`、`npm run build`、`npm run test:sites`。
-2. 用现有音乐环境的 Python 运行 `test_controls.py`、`test_instrumental.py`、`test_adjust.py`，以及设置 `SING_LOCAL_TEST` 后的 `test_backend.py`。
+2. 用现有音乐环境的 Python 运行 `test_controls.py`、`test_instrumental.py`、`test_adjust.py`、`test_versions.py`，以及设置 `SING_LOCAL_TEST` 后的 `test_backend.py`。
 3. 运行实测并写入验证报告（输出目录放在 Git 外）：`dual-version/benchmark_adjust.py --runtime <本机 local-test> --output <Git 外目录> --validation dual-version/VALIDATION-v1.3.0.json`，可加 `--source <本机纯伴奏 WAV>` 改用参考旋律模式。全部通过后 `passed` 变为 true，并记录本机 FFmpeg 是否含 Rubber Band。
 4. 确认队列空闲后使用 `dual-version/deploy-release.ps1 -AppRoot <现有 sing-studio 目录>` 更新；再试听变调、Slowed 与混响结果。
 5. 若本机 FFmpeg 不含 Rubber Band，功能仍可用（atempo 方式），较大的变调变速音质会差一些；可考虑换用含 librubberband 的 FFmpeg 构建，需用户批准后再安装。

@@ -15,6 +15,8 @@ import subprocess
 import time
 from pathlib import Path
 
+from generation_controls import LETTERS, MAX_VERSIONS
+
 ROOT = Path(__file__).resolve().parent
 TEST = Path(os.environ.get('SING_LOCAL_TEST', str(ROOT.parent / 'local-test')))
 HOME = Path(os.environ.get('SING_VOICE_HOME', str(TEST / 'seed-vc')))
@@ -25,7 +27,7 @@ RUNNER = ROOT / 'seedvc_runner.py'
 SEEDVC_COMMIT = '51383efd921027683c89e5348211d93ff12ac2a8'
 MODEL = 'DiT_seed_v2_uvit_whisper_base_f0_44k_bigvgan_pruned_ft_ema_v2.pth'
 RATE = 48000
-DEFAULT = {'a': False, 'b': False, 'octave': 'auto'}
+DEFAULT = {'versions': [False] * MAX_VERSIONS, 'octave': 'auto'}
 OCTAVES = ('auto', 'none', 'up', 'down')
 STEPS = {'fast': 15, 'balanced': 30, 'quality': 50}
 CFG_RATE = 0.7
@@ -52,21 +54,23 @@ def available():
 
 
 def validate(value, *, inherit=False):
-    """Shared or per-song setting: which versions swap, and the octave rule. None follows the shared one."""
+    """Shared or per-song setting: one switch per version letter A-J, and the octave rule.
+    None means a song follows the shared setting."""
     if value is None and inherit:
         return None
     if not isinstance(value, dict) or set(value) - set(DEFAULT):
         raise ValueError('换声设置无效。')
-    value = {**DEFAULT, **value}
-    if not isinstance(value['a'], bool) or not isinstance(value['b'], bool) or value['octave'] not in OCTAVES:
+    versions, octave = value.get('versions', DEFAULT['versions']), value.get('octave', DEFAULT['octave'])
+    if (not isinstance(versions, list) or len(versions) != MAX_VERSIONS or not all(isinstance(v, bool) for v in versions)
+            or octave not in OCTAVES):
         raise ValueError('换声设置无效。')
-    return value
+    return {'versions': list(versions), 'octave': octave}
 
 
-def for_variant(setting, variant):
-    """The job request for version A or B, or None when that version keeps its generated voice."""
-    setting = validate(setting if setting is not None else DEFAULT)
-    return {'target': 'original', 'octave': setting['octave']} if setting[variant.lower()] else None
+def for_variant(setting, letter):
+    """The job request for one version letter, or None when that version keeps its generated voice."""
+    setting = validate(setting if setting is not None else {})
+    return {'target': 'original', 'octave': setting['octave']} if setting['versions'][LETTERS.index(letter)] else None
 
 
 def validate_job(value):

@@ -7,6 +7,7 @@ import server
 import audio_adjust
 import voice_swap
 from generation_controls import RELEASE, VERSION, CONTROL_VERSION, DEFAULT_STRENGTH, LEGACY_INSTRUCTIONS, validate_controls, text_field, build_caption, effective_controls, output_name
+from generation_controls import MAX_VERSIONS, LETTERS, version_count, text_list, default_styles
 
 ROOT=Path(os.environ.get('SING_APP_ROOT',str(server.ROOT)))
 TEST=Path(os.environ.get('SING_LOCAL_TEST',str(ROOT.parent/'local-test')))
@@ -39,7 +40,17 @@ def track(identifier):
     if not value:raise ValueError('找不到这首歌曲。')
     return value
 
-def public_track(t):return {k:v for k,v in t.items() if k!='source'}
+def stored_voice(value,inherit=False):
+    """A saved voice swap setting, or the default / None when the stored shape is no longer valid."""
+    try:return voice_swap.validate(value,inherit=inherit)
+    except ValueError:return None if inherit else voice_swap.validate({})
+
+def versioned_track(t):
+    """Per-song version styles ('' follows the shared style); style / style_b stay their A and B entries."""
+    styles=t.get('styles') if isinstance(t.get('styles'),list) and len(t['styles'])==MAX_VERSIONS else ['']*MAX_VERSIONS
+    return {**t,'styles':[t.get('style',''),t.get('style_b',''),*styles[2:]],'version_count':t.get('version_count'),'voice_swap':stored_voice(t.get('voice_swap'),True)}
+
+def public_track(t):return {k:v for k,v in versioned_track(t).items() if k!='source'}
 
 def wake_workers():WAKE.set();EFFECTS_WAKE.set()
 
@@ -82,12 +93,19 @@ def settings():
     value = {**{'profile':'quality','style_b':'Jazz','gender':'auto','tone':'natural',
         'style':'R&B','mode':'remix','format':'both','instructions':'','paused':False,
         'instructions_a':'','instructions_b':'','change_strength':DEFAULT_STRENGTH,'melody_mode':'reference',
-        'adjust':dict(audio_adjust.DEFAULT),'voice_swap':dict(voice_swap.DEFAULT)},
+        'adjust':dict(audio_adjust.DEFAULT),'version_count':2,'voice_swap':voice_swap.validate({})},
         **read(DATA/'settings.json',{})}
     # Only migrate the exact old built-in text, never arbitrary user writing.
     if not value.get('controls_version') and value['instructions'] == LEGACY_INSTRUCTIONS:
         value['instructions'] = ''
     value['controls_version'] = CONTROL_VERSION
+    value['voice_swap'] = stored_voice(value['voice_swap'])
+    styles=value.get('styles')
+    if not (isinstance(styles,list) and len(styles)==MAX_VERSIONS):styles=default_styles(str(value['style']),str(value['style_b']))
+    notes=value.get('version_instructions')
+    if not (isinstance(notes,list) and len(notes)==MAX_VERSIONS):notes=['']*MAX_VERSIONS
+    value['styles']=[value['style'],value['style_b'],*styles[2:]]
+    value['version_instructions']=[value['instructions_a'],value['instructions_b'],*notes[2:]]
     return value
 
 def prepare_job(payload):
@@ -154,15 +172,16 @@ def create_batch(payload):
         for item in items:
             variants=item.get('variants')
             if variants is None:expanded.append((item,None,None));continue
-            if not isinstance(variants,list) or len(variants)!=2 or not all(isinstance(v,dict) for v in variants):raise ValueError('每首歌曲需要 A、B 两个版本。')
-            if str(variants[0].get('style','')).strip().casefold()==str(variants[1].get('style','')).strip().casefold():raise ValueError('A、B 请选择不同风格。')
+            if not isinstance(variants,list) or not 1<=len(variants)<=MAX_VERSIONS or not all(isinstance(v,dict) for v in variants):raise ValueError(f'每首歌曲需要 1–{MAX_VERSIONS} 个版本。')
+            names=[str(v.get('style','')).strip().casefold() for v in variants]
+            if len(set(names))!=len(names):raise ValueError('同一首歌的各版本请选择不同风格。')
             pair=uuid.uuid4().hex
             base={k:v for k,v in item.items() if k not in ('variants','voice_swap','voice')}
-            seed=secrets.randbelow(2147483646)
-            swap=voice_swap.validate(item.get('voice_swap') if item.get('voice_swap') is not None else voice_swap.DEFAULT)
+            seed=secrets.randbelow(2147483648-MAX_VERSIONS)
+            swap=voice_swap.validate(item.get('voice_swap') if item.get('voice_swap') is not None else {})
             for index,variant in enumerate(variants):
                 override={k:v for k,v in variant.items() if k in ('style','caption','gender','tone','variant_instructions','change_strength','melody_mode')}
-                expanded.append(({**base,**override,'seed':seed+index,'voice':voice_swap.for_variant(swap,'AB'[index])},pair,'AB'[index]))
+                expanded.append(({**base,**override,'seed':seed+index,'voice':voice_swap.for_variant(swap,LETTERS[index])},pair,LETTERS[index]))
         if sum(j['state'] in ('queued','running') for j in jobs())+len(expanded)>500:raise ValueError('队列最多容纳 500 首，请等部分任务完成。')
         # Validate the whole batch before creating any visible job.
         prepared=[];first={}
@@ -416,10 +435,21 @@ class Handler(server.Handler):
             if route=='/api/settings':
                 with LOCK:
                     current=settings()
-                    for key in ('style','style_b','mode','format','instructions','paused','profile','gender','tone','instructions_a','instructions_b','change_strength','melody_mode'):
+                    for key in ('style','style_b','mode','format','instructions','paused','profile','gender','tone','instructions_a','instructions_b','change_strength','melody_mode','version_count'):
                         if key in payload:current[key]=payload[key]
                     if 'adjust' in payload:current['adjust']=audio_adjust.validate(payload['adjust'])
                     if 'voice_swap' in payload:current['voice_swap']=voice_swap.validate(payload['voice_swap'])
+                    version_count(current['version_count'])
+                    if 'styles' in payload:
+                        current['styles']=text_list(payload['styles'],40,allow_empty=False,message='每个版本都需要 1–40 字的风格名称。')
+                        current['style'],current['style_b']=current['styles'][:2]
+                    if 'version_instructions' in payload:
+                        current['version_instructions']=text_list(payload['version_instructions'],900,allow_empty=True,message='各版本补充要求须为不超过 900 字的文字。')
+                        current['instructions_a'],current['instructions_b']=current['version_instructions'][:2]
+                    current['styles'][:2]=[current['style'],current['style_b']]
+                    current['version_instructions'][:2]=[current['instructions_a'],current['instructions_b']]
+                    text_list(current['styles'],40,allow_empty=False,message='每个版本都需要 1–40 字的风格名称。')
+                    text_list(current['version_instructions'],900,allow_empty=True,message='各版本补充要求须为不超过 900 字的文字。')
                     if current['mode'] not in ('remix','preserve') or current['format'] not in ('both','wav','mp3') or not isinstance(current['paused'],bool):raise ValueError('设置无效。')
                     if not 1<=len(str(current['style']))<=40 or len(str(current['instructions']))>900:raise ValueError('风格名称或描述太长。')
                     from yue2_engine import PROFILES,GENDERS,TONES
@@ -432,10 +462,16 @@ class Handler(server.Handler):
             if match:
                 with LOCK:
                     value=track(match[1])
-                    for key in ('lyrics','style','style_b','mode','hidden','gender','tone','change_strength','melody_mode','instructions','instrumental'):
+                    for key in ('lyrics','style','style_b','mode','hidden','gender','tone','change_strength','melody_mode','instructions','instrumental','version_count'):
                         if key in payload:value[key]=payload[key]
                     if 'adjust' in payload:value['adjust']=audio_adjust.validate(payload['adjust'],inherit=True)
                     if 'voice_swap' in payload:value['voice_swap']=voice_swap.validate(payload['voice_swap'],inherit=True)
+                    version_count(value.get('version_count'),inherit=True)
+                    if 'styles' in payload:
+                        value['styles']=text_list(payload['styles'],40,allow_empty=True,message='逐首版本风格无效。')
+                        value['style'],value['style_b']=value['styles'][:2]
+                    value=versioned_track(value)
+                    text_list(value['styles'],40,allow_empty=True,message='逐首版本风格无效。')
                     if not isinstance(value.get('lyrics',''),str) or len(value.get('lyrics',''))>20000 or value.get('mode','') not in ('','remix','preserve') or len(str(value.get('style','')))>40 or not isinstance(value.get('hidden',False),bool):raise ValueError('歌曲设置无效。')
                     if not isinstance(value.get('instrumental',False),bool):raise ValueError('歌曲类型无效。')
                     from yue2_engine import GENDERS,TONES

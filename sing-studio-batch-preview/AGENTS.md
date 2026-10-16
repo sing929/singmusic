@@ -53,8 +53,13 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 - Voice swap is deferred to a later, separate update.
 - Code is written on a development PC and delivered as a GitHub branch + pull request; real YuE2 testing and installation happen on the i7 + RTX 5070 app PC.
 
+## Confirmed versions-per-song brief — 2026-10-16
+- One song can generate 1–10 complete versions (A–J), each with a different style, replacing the fixed A/B pair.
+- A shared version count with a per-song override; per-version styles follow the shared ones unless set for that song.
+- Shipped inside v1.3.0 together with key / tempo; voice swap remains a later v1.4.0 update.
+
 ## Confirmed voice swap brief — 2026-10-16
 - Voice swap targets the original song's singer: the vocals separated from the imported original. No separate voice clip, RVC models or training.
-- Pre-generation only, on the generated vocals of A/B: shared setting with per-song override, chosen separately for version A and version B, plus an octave rule. No voice swap re-edit on finished works.
+- Pre-generation only, on the generated vocals: shared setting with per-song override, one switch per version (A–J, following the version count), plus an octave rule. No voice swap re-edit on finished works.
 - Not used for preserve-original or instrumental songs. Remind users to swap only voices they have rights to.
 - Local Seed-VC in its own environment on the RTX 5070 app PC; the user downloads the bundle on another PC with internet and installs it offline. Nothing is downloaded on the development PC and no audio or lyrics are uploaded.

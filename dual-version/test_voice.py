@@ -63,6 +63,11 @@ def sung(seconds, frequency=220., amplitude=.3, rate=SR):
     return (amplitude * wave / np.max(np.abs(wave))).astype(np.float32)
 
 
+def swap(*letters, octave='auto'):
+    """The shared / per-song setting with the given version letters switched on."""
+    return {'versions': [letter in letters for letter in voice_swap.LETTERS], 'octave': octave}
+
+
 def silence(seconds, rate=SR):
     return np.zeros(int(seconds * rate), dtype=np.float32)
 
@@ -159,12 +164,15 @@ class VoiceTest(unittest.TestCase):
     def test_settings_validation_names_and_octave_rule(self):
         self.assertEqual(voice_swap.validate({}), voice_swap.DEFAULT)
         self.assertIsNone(voice_swap.validate(None, inherit=True))
-        self.assertEqual(voice_swap.validate({'b': True, 'octave': 'up'}), {'a': False, 'b': True, 'octave': 'up'})
-        for bad in ({'a': 1}, {'octave': 'sideways'}, {'c': True}, None, [], 'on'):
+        self.assertEqual(voice_swap.validate({'octave': 'up'}), swap(octave='up'))
+        self.assertEqual(voice_swap.validate(swap('B', 'J')), swap('B', 'J'))
+        for bad in ({'a': True}, {'octave': 'sideways'}, {'versions': [True] * 9}, {'versions': [1] + [False] * 9},
+                    {'versions': 'AB'}, None, [], 'on'):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 voice_swap.validate(bad)
-        setting = {'a': True, 'b': False, 'octave': 'down'}
+        setting = swap('A', 'J', octave='down')
         self.assertEqual(voice_swap.for_variant(setting, 'A'), {'target': 'original', 'octave': 'down'})
+        self.assertEqual(voice_swap.for_variant(setting, 'J'), {'target': 'original', 'octave': 'down'})
         self.assertIsNone(voice_swap.for_variant(setting, 'B'))
         self.assertIsNone(voice_swap.for_variant(None, 'A'))
         self.assertIsNone(voice_swap.validate_job(None))
@@ -342,34 +350,47 @@ class VoiceTest(unittest.TestCase):
             state = api('/api/state')
             self.assertEqual(state['settings']['voice_swap'], voice_swap.DEFAULT)
             self.assertTrue(state['engines']['voice'])
-            saved = api('/api/settings', {'voice_swap': {'a': True, 'octave': 'down'}})
-            self.assertEqual(saved['voice_swap'], {'a': True, 'b': False, 'octave': 'down'})
-            for bad in ({'a': 'yes'}, {'octave': 'high'}, None, 'on'):
+            saved = api('/api/settings', {'voice_swap': swap('A', octave='down')})
+            self.assertEqual(saved['voice_swap'], swap('A', octave='down'))
+            for bad in ({'versions': ['yes'] * 10}, {'octave': 'high'}, {'a': True}, None, 'on'):
                 with self.subTest(bad=bad), self.assertRaises(urllib.error.HTTPError):
                     api('/api/settings', {'voice_swap': bad})
             self.assertEqual(api('/api/state')['settings'], saved)
-            self.assertEqual(api('/api/tracks/' + tid, {'voice_swap': {'b': True}})['voice_swap'], {'a': False, 'b': True, 'octave': 'auto'})
+            self.assertEqual(api('/api/tracks/' + tid, {'voice_swap': swap('B')})['voice_swap'], swap('B'))
             self.assertIsNone(api('/api/tracks/' + tid, {'voice_swap': None})['voice_swap'])
+            # An unusable stored shape falls back instead of blocking later saves and batches.
+            service.save(service.DATA / 'settings.json', {**service.read(service.DATA / 'settings.json'), 'voice_swap': {'a': True}})
+            track = service.read(service.TRACKS / tid / 'track.json')
+            service.save(service.TRACKS / tid / 'track.json', {**track, 'voice_swap': {'b': True}})
+            state = api('/api/state')
+            self.assertEqual(state['settings']['voice_swap'], voice_swap.DEFAULT)
+            self.assertIsNone(next(t for t in state['tracks'] if t['id'] == tid)['voice_swap'])
+            self.assertEqual(api('/api/settings', {'voice_swap': swap('A', octave='down')})['voice_swap'], swap('A', octave='down'))
+            service.save(service.TRACKS / tid / 'track.json', track)
             def batch(key, **item):
                 return api('/api/batch', {'request_id': key, 'items': [{'track_id': tid, 'instructions': '',
                     'variants': [{'style': 'Lo-fi'}, {'style': 'Jazz'}], **item}]})['jobs']
             with patch('yue2_engine.available', return_value=True):
-                a, b = batch('voice-batch-1234567', voice_swap={'a': True, 'b': False, 'octave': 'auto'}, adjust={'semitones': -2})
+                a, b = batch('voice-batch-1234567', voice_swap=swap('A'), adjust={'semitones': -2})
                 ca, cb = (service.read(service.JOBS / j['id'] / 'config.json') for j in (a, b))
                 self.assertEqual((ca['voice'], cb['voice']), ({'target': 'original', 'octave': 'auto'}, None))
                 self.assertEqual((a['voice'], a['output_name'], b['output_name']), (ca['voice'], 'Lo-fi Song (Original Voice, Key -2)', 'Jazz Song (Key -2)'))
                 self.assertEqual(ca['output_name'], a['output_name'])
-                both = batch('voice-batch-both-1234', voice_swap={'a': True, 'b': True, 'octave': 'up'})
+                both = batch('voice-batch-both-1234', voice_swap=swap('A', 'B', octave='up'))
                 self.assertEqual([j['config']['voice'] for j in both], [{'target': 'original', 'octave': 'up'}] * 2)
+                three = api('/api/batch', {'request_id': 'voice-batch-three-123', 'items': [{'track_id': tid, 'instructions': '',
+                    'voice_swap': swap('C', 'D'), 'variants': [{'style': 'Lo-fi'}, {'style': 'Jazz'}, {'style': 'Soul'}]}]})['jobs']
+                self.assertEqual([(j['variant'], j['config']['voice'] is not None, j['output_name']) for j in three],
+                                 [('A', False, 'Lo-fi Song'), ('B', False, 'Jazz Song'), ('C', True, 'Soul Song (Original Voice)')])
                 for mode, instrumental in (('preserve', False), ('remix', True)):
                     with self.subTest(mode=mode, instrumental=instrumental):
-                        kept = batch(f'voice-off-{mode}-{instrumental}-1234', mode=mode, instrumental=instrumental, voice_swap={'a': True, 'b': True})
+                        kept = batch(f'voice-off-{mode}-{instrumental}-1234', mode=mode, instrumental=instrumental, voice_swap=swap('A', 'B'))
                         self.assertEqual([j['config']['voice'] for j in kept], [None, None])
                         self.assertNotIn('Original Voice', kept[0]['output_name'])
                 single = api('/api/jobs', {'track_id': tid, 'style': 'R&B', 'instructions': '', 'voice': {'target': 'original', 'octave': 'none'}})
                 self.assertEqual((single['config']['voice'], single['output_name']), ({'target': 'original', 'octave': 'none'}, 'R&B Song (Original Voice)'))
                 count = len(service.jobs())
-                for key, item in (('voice-bad-setting-1234', {'voice_swap': {'a': 'yes'}}), ('voice-bad-job-12345678', {'voice': 'original'})):
+                for key, item in (('voice-bad-setting-1234', {'voice_swap': {'a': True}}), ('voice-bad-job-12345678', {'voice': 'original'})):
                     with self.subTest(item=item), self.assertRaises(urllib.error.HTTPError):
                         if 'voice' in item:
                             api('/api/jobs', {'track_id': tid, 'style': 'R&B', 'instructions': '', **item})
@@ -378,9 +399,9 @@ class VoiceTest(unittest.TestCase):
                 with patch.object(voice_swap, 'available', return_value=False):
                     self.assertFalse(api('/api/state')['engines']['voice'])
                     with self.assertRaises(urllib.error.HTTPError) as error:
-                        batch('voice-missing-engine-12', voice_swap={'b': True})
+                        batch('voice-missing-engine-12', voice_swap=swap('B'))
                     self.assertIn('Seed-VC', json.load(error.exception)['error'])
-                    plain = batch('voice-missing-but-off-1', voice_swap={'a': False, 'b': False})
+                    plain = batch('voice-missing-but-off-1', voice_swap=swap())
                 self.assertEqual(len(service.jobs()), count + 2)
                 self.assertEqual([j['config']['voice'] for j in plain], [None, None])
         finally:
