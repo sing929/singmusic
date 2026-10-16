@@ -46,3 +46,9 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 - Disable preserve-original and vocal gender/timbre for instrumental songs while retaining style, strength, and reference/free melody choices. Preserve saved lyrics and vocal preferences so switching back restores them.
 - Name finished works and WAV/MP3 downloads as style followed by the original title, e.g. Lo-fi Justin Bieber - Baby. Preserve original tracks and historical job metadata.
 - Update the original local application after backup and an idle queue, then commit and push maintained source to GitHub.
+
+## Confirmed key / tempo brief — 2026-10-16
+- Key and tempo changes in both places: a pre-generation setting (global with per-song override, shared by A/B) and a re-edit action on finished works that saves a new work without regenerating.
+- Two kinds of change: independent key (semitones) and tempo (time-stretch), and Slowed / Sped up where pitch follows speed. Optional reverb with an on/off switch and amount.
+- Voice swap is deferred to a later, separate update.
+- Code is written on a development PC and delivered as a GitHub branch + pull request; real YuE2 testing and installation happen on the i7 + RTX 5070 app PC.

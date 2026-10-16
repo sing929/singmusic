@@ -181,8 +181,9 @@ def align_and_mix(jobdir):
 def validate(jobdir,config):
     import numpy as np
     import soundfile as sf
-    files={'result':'result.wav','original':'source.wav'}
-    if config['mode']=='preserve':files.update(vocals='vocals.wav',instrumental='instrumental.wav')
+    derived=config.get('kind')=='adjust'
+    files={'result':'result.wav'} if derived else {'result':'result.wav','original':'source.wav'}
+    if config['mode']=='preserve' and not derived:files.update(vocals='vocals.wav',instrumental='instrumental.wav')
     checks={}
     for kind,name in files.items():
         data,sr=sf.read(jobdir/name,always_2d=True)
@@ -203,7 +204,7 @@ def validate(jobdir,config):
             (jobdir/files[kind]).replace(jobdir/filename)
             files[kind]=filename
     write_json(jobdir/'result.json',{'files':files,'checks':checks,
-        'notice':('已按纯音乐要求生成，跳过歌词识别；请试听复核。'+('自由重创允许旋律及段落变化。' if config.get('melody_mode')=='free' else '')) if config.get('instrumental') else ('保留原唱模式已做自动对齐，仍需试听复核。' if config['mode']=='preserve' else ('YuE2 按歌词和目标要求自由重创；旋律、段落与声音可能变化，请试听复核。' if config.get('melody_mode')=='free' else 'YuE2 根据识别的旋律重新演绎；人声与歌词可能变化，请试听复核。'))})
+        'notice':'已在本机对原作品变调变速，未重新生成；请试听复核音质。' if derived else ('已按纯音乐要求生成，跳过歌词识别；请试听复核。'+('自由重创允许旋律及段落变化。' if config.get('melody_mode')=='free' else '')) if config.get('instrumental') else ('保留原唱模式已做自动对齐，仍需试听复核。' if config['mode']=='preserve' else ('YuE2 按歌词和目标要求自由重创；旋律、段落与声音可能变化，请试听复核。' if config.get('melody_mode')=='free' else 'YuE2 根据识别的旋律重新演绎；人声与歌词可能变化，请试听复核。'))})
 
 def reuse_analysis(jobdir,config):
     """Only reuse preprocessing of this pair's identical source; never generated audio or semantic tokens."""
@@ -212,7 +213,7 @@ def reuse_analysis(jobdir,config):
     prior=jobdir.parent/identifier
     try:
         old=json.loads((prior/'config.json').read_text(encoding='utf-8'))
-        if any(old.get(k)!=config.get(k) for k in ('source','start','duration','lyrics','mode','pair_id')):return False
+        if any(old.get(k)!=config.get(k) for k in ('source','start','duration','lyrics','mode','pair_id','adjust')):return False
         if bool(old.get('instrumental'))!=bool(config.get('instrumental')):return False
         if not (prior/'preprocessing.json').exists():return False
         for name in ('lyrics.json','melody.abc'):
@@ -227,15 +228,37 @@ def reuse_analysis(jobdir,config):
         return True
     except (OSError,ValueError):return False
 
+def run_adjustment(jobdir,config):
+    """A derived work: key/tempo/reverb applied to a finished result, never regenerated."""
+    import audio_adjust
+    def progress(stage,message):write_json(jobdir/'progress.json',{'stage':stage,'message':message,'updated_at':time.time()})
+    source=Path(config['source'])
+    if not source.is_file():raise RuntimeError('找不到原作品音频，无法变调变速。')
+    progress('adjusting','正在本机变调变速：'+audio_adjust.label(config['adjust']))
+    report=audio_adjust.render(source,jobdir/'result.wav',config['adjust'],FFMPEG,
+        target_frames=round(config['duration']*audio_adjust.RATE))
+    write_json(jobdir/'adjust.json',{'result':report})
+    progress('validating','正在检查音频并保存作品');validate(jobdir,config)
+    progress('complete','作品已完成')
+
 def run_pipeline(jobdir,config):
+    if config.get('kind')=='adjust':return run_adjustment(jobdir,config)
+    import audio_adjust
     def progress(stage,message):write_json(jobdir/'progress.json',{'stage':stage,'message':message,'updated_at':time.time()})
     def stage(name):
         subprocess.run([str(PYTHON),str(Path(__file__)),str(jobdir),'--stage',name],check=True,
             cwd=str(ROOT),creationflags=CREATE_NO_WINDOW,timeout=max(3600,int(config["duration"]*40)))
     progress('preparing','正在准备整首音频')
     subprocess.run([str(FFMPEG),'-nostdin','-y','-v','error','-ss',str(config['start']),'-i',config['source'],
-        '-t',str(config['duration']),'-ac','2','-ar','48000','-c:a','pcm_s16le',str(jobdir/'source.wav')],
+        '-t',str(config.get('source_duration',config['duration'])),'-ac','2','-ar','48000','-c:a','pcm_s16le',str(jobdir/'source.wav')],
         check=True,creationflags=CREATE_NO_WINDOW,timeout=120)
+    adjust=config.get('adjust');reports={}
+    # Shift the reference itself, so separation, melody and YuE2 all follow the new key and tempo.
+    if audio_adjust.changes_source(adjust):
+        progress('adjusting','正在变调变速原曲：'+audio_adjust.label(adjust,reverb=False))
+        reports['source']=audio_adjust.render(jobdir/'source.wav',jobdir/'source.wav',adjust,FFMPEG,
+            target_frames=round(config['duration']*audio_adjust.RATE),include_reverb=False,subtype='PCM_16')
+        write_json(jobdir/'adjust.json',reports)
     reused=reuse_analysis(jobdir,config)
     if config['mode']=='preserve' and not reused:
         progress('separating','正在分离原唱与伴奏');stage('separate-original')
@@ -257,6 +280,11 @@ def run_pipeline(jobdir,config):
         progress('aligning','正在对齐新伴奏并混入原唱');stage('align')
     else:
         (jobdir/'generated.wav').replace(jobdir/'result.wav')
+    if adjust and adjust['reverb']:
+        progress('effects','正在添加混响')
+        reports['result']=audio_adjust.render(jobdir/'result.wav',jobdir/'result.wav',{**audio_adjust.DEFAULT,'reverb':adjust['reverb']},
+            FFMPEG,target_frames=round(config['duration']*audio_adjust.RATE))
+        write_json(jobdir/'adjust.json',reports)
     progress('validating','正在检查音频并保存作品');stage('validate')
     progress('complete','作品已完成')
 
