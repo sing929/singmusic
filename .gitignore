@@ -30,6 +30,7 @@
 !/dual-version/VALIDATION-v1.2.0.json
 !/dual-version/audio_adjust.py
 !/dual-version/test_adjust.py
+!/dual-version/test_versions.py
 !/dual-version/benchmark_adjust.py
 !/dual-version/VALIDATION-v1.3.0.json
 !/sing-studio-batch-preview/

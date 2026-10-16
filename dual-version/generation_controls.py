@@ -22,7 +22,12 @@ STYLE_TAGS = {
     'Phonk': 'phonk, gritty Memphis rap atmosphere, distorted 808 bass, cowbell melody, punchy trap drums, dark lo-fi texture',
     'Hardstyle': 'hardstyle, hard distorted pitched kick, reverse bass, driving four on the floor rhythm, euphoric supersaw lead, dramatic builds and drops',
     'Hardtekk': 'hardtekk, rapid pounding four on the floor kicks, clipped percussive bass, raw repetitive rave groove, minimal abrasive synth stabs',
+    'Soul': 'classic soul, warm Hammond organ, horn section, round groovy bass, gospel-tinged chords',
+    'Funk': 'funk, syncopated slap bass, tight clavinet and wah guitar, punchy horns, danceable groove',
 }
+MAX_VERSIONS = 10
+LETTERS = 'ABCDEFGHIJ'
+DEFAULT_STYLES = ['R&B', 'Jazz', 'Lo-fi', 'Acoustic', 'Remix', 'Phonk', 'Hardstyle', 'Hardtekk', 'Soul', 'Funk']
 GENDERS = {'auto': '', 'male': 'male vocals, solo male singer', 'female': 'female vocals, solo female singer'}
 TONES = {
     'natural': 'natural vocal timbre', 'warm': 'warm, mellow vocals, rounded intimate vocal tone',
@@ -50,6 +55,25 @@ def text_field(payload, key, limit=900):
     if not isinstance(value, str) or len(value) > limit:
         raise ValueError(f'{key} 须为不超过 {limit} 字的文字。')
     return value.strip()
+
+def version_count(value, *, inherit=False):
+    if inherit and value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= MAX_VERSIONS:
+        raise ValueError(f'每首版本数须为 1–{MAX_VERSIONS} 的整数。')
+    return value
+
+def text_list(value, limit, *, allow_empty, message):
+    """Exactly MAX_VERSIONS strings, one per version letter."""
+    if (not isinstance(value, list) or len(value) != MAX_VERSIONS or
+            not all(isinstance(v, str) and len(v.strip()) <= limit and (allow_empty or v.strip()) for v in value)):
+        raise ValueError(message)
+    return [v.strip() for v in value]
+
+def default_styles(first, second):
+    """A and B as given, then the unused presets, so every version starts on a different style."""
+    taken = {first.strip().casefold(), second.strip().casefold()}
+    return [first, second] + [s for s in DEFAULT_STYLES if s.casefold() not in taken][:MAX_VERSIONS - 2]
 
 def build_caption(style, instructions='', variant_instructions=''):
     # Genre presets supply defaults only. Explicit requirements replace their

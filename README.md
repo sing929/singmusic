@@ -2,7 +2,14 @@
 
 本机 YuE2 整首音乐改编工作室。批量导入音频、可选歌词、A/B 完整版本、原唱保留、收藏和可恢复移除。音频、歌词及推理留在电脑上。
 
-这次更新加入变调与变速（含 Slowed / Sped up 与可选混响），既可在生成前设置，也可对已完成作品另存一份调整后的新作品。
+这次更新加入每首 1–10 个版本，以及变调与变速（含 Slowed / Sped up 与可选混响）；变调变速既可在生成前设置，也可对已完成作品另存一份调整后的新作品。
+
+## 每首多个版本
+
+- 在统一设置的“每首版本数量”选择 1–10 个，每个版本（A–J）选择一个目标风格；同一首歌的各版本须为不同风格，重复时界面会提示并阻止开始。
+- 单首歌曲的“版本数”可改为自己的数量，各版本风格下拉菜单空值代表跟随统一。
+- 10 种预设风格：R&B、Lo-fi、Jazz、Acoustic、Remix、Phonk、Hardstyle、Hardtekk、Soul、Funk，也可自定义。“写下具体要求”里每个版本都有独立补充要求。
+- 每个版本都是一次完整的 YuE2 生成，版本越多排队越久；第一个版本做原曲分析，其他版本复用。作品页按歌曲分组显示所有版本。
 
 ## 使用变调与变速
 
@@ -41,7 +48,7 @@
 
 构建前端：在 `sing-studio-batch-preview/` 使用现有 Node 环境运行 `npm ci`（首次准备依赖）、`npm run build` 和 `npm run test:sites`。构建保留原有 Sites 兼容包装；生产功能必须连接本机 Python 服务，本次不发布云站点。
 
-后端验证：用现有音乐环境的 Python 运行 `dual-version/test_controls.py`、`test_instrumental.py` 和 `test_adjust.py`（后两者使用 runtime 中的 FFmpeg，先设置 `SING_LOCAL_TEST`）；运行 `test_backend.py` 前设置 `SING_LOCAL_TEST` 为本机 runtime 目录。变调变速的真实推理验证：`dual-version/benchmark_adjust.py --runtime ... --output <Git 外目录> --validation dual-version/VALIDATION-v1.3.0.json`，可加 `--source <本机纯伴奏 WAV>`；全部通过后才会把该版本验证标记为通过，部署脚本以此为准。后者需要既有示例音频与模型文件来验证可用性，推理本身使用测试进程。真实推理验证另用 `benchmark_controls.py --runtime ... --installed-app ... --output ...`，结果目录须留在 Git 外。
+后端验证：用现有音乐环境的 Python 运行 `dual-version/test_controls.py`、`test_instrumental.py`、`test_adjust.py` 和 `test_versions.py`（纯音乐与变调测试使用 runtime 中的 FFmpeg，先设置 `SING_LOCAL_TEST`）；运行 `test_backend.py` 前设置 `SING_LOCAL_TEST` 为本机 runtime 目录。变调变速的真实推理验证：`dual-version/benchmark_adjust.py --runtime ... --output <Git 外目录> --validation dual-version/VALIDATION-v1.3.0.json`，可加 `--source <本机纯伴奏 WAV>`；全部通过后才会把该版本验证标记为通过，部署脚本以此为准。后者需要既有示例音频与模型文件来验证可用性，推理本身使用测试进程。真实推理验证另用 `benchmark_controls.py --runtime ... --installed-app ... --output ...`，结果目录须留在 Git 外。
 
 更新现有安装：先完成构建和验证，再使用 `dual-version/deploy-release.ps1 -AppRoot <现有 sing-studio 目录>`。脚本拒绝活动队列，备份应用代码和前端，保留用户数据，并启动原有本机入口。仅用于已安装应用，不创建或下载推理环境。
 

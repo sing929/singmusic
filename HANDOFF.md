@@ -1,6 +1,14 @@
 # Sing Studio v1.3.0 · 2026-10-16
 
-## 本次交付
+## 本次交付 · 多版本（同一 v1.3.0）
+
+- 用户要求“一首歌改编成不同版本，可以选择数量”。确认：每首 1–10 个生成版本，各版本不同风格；统一数量并允许逐首覆盖；放进 v1.3.0 同一个 PR，人声替换仍为之后的 v1.4.0。
+- 设置新增 `version_count`（1–10，默认 2）、`styles`（10 项）、`version_instructions`（10 项）；歌曲新增 `styles`（10 项，空值跟随统一）与 `version_count`（`null` 跟随统一）。`style` / `style_b`、`instructions_a` / `instructions_b` 始终与第 1、2 项同步保存，旧设置读入时自动补齐其余版本（未使用的预设）。
+- `create_batch` 接受 1–10 个 variants，字母 A–J，风格须不同（忽略大小写和首尾空格），第一个版本分析、其余复用；种子上限修正为不超过 2147483647。新增 Soul、Funk 预设。
+- 界面：每首版本数量选择、按数量显示的版本风格按钮组与补充要求、重复风格提示；逐首版本数与各版本风格下拉；底部、确认对话框、作品分组（“N 个版本”“N 版总处理用时”）与说明文字不再写死 A / B。
+- 验证：新增 `test_versions.py` 4 项（默认与旧设置迁移、列表与 A/B 同步、逐首覆盖、1/10 个版本展开、重复与超量拒绝、种子范围）；全部 32 项后端回归与 4 项打包测试通过。浏览器：旧设置迁移、4 个版本按钮组、重复提示与恢复、逐首 3 个版本并改 C 为 Phonk，实际入队 A/B/C 三个任务且名称带变调说明。
+
+## 本次交付 · 变调变速
 
 - 用户确认需求：变调与变速“两处都要”（生成前设置 + 已完成作品再处理），包含“独立调整”和“Slowed / Sped up”两种方式，并要可选混响。人声替换（voice swap）明确留到以后的单独更新，本次不做。
 - 新模块 `dual-version/audio_adjust.py`：校验（半音 -12～+12 整数、速度 50～150 整数、混响 0～100 整数、`independent` / `linked`）、作品名称说明、FFmpeg 滤镜（有 Rubber Band 时用 `rubberband`，否则 `asetrate` + `aresample` + `atempo` 链），以及基于固定种子的立体声卷积混响。输出 48 kHz 双声道并精确对齐目标帧数。
@@ -19,7 +27,7 @@
 ## 在应用电脑（i7-14700F + RTX 5070）上完成
 
 1. 拉取分支或合并后的 main，在 `sing-studio-batch-preview/` 运行 `npm ci`、`npm run build`、`npm run test:sites`。
-2. 用现有音乐环境的 Python 运行 `test_controls.py`、`test_instrumental.py`、`test_adjust.py`，以及设置 `SING_LOCAL_TEST` 后的 `test_backend.py`。
+2. 用现有音乐环境的 Python 运行 `test_controls.py`、`test_instrumental.py`、`test_adjust.py`、`test_versions.py`，以及设置 `SING_LOCAL_TEST` 后的 `test_backend.py`。
 3. 运行实测并写入验证报告（输出目录放在 Git 外）：`dual-version/benchmark_adjust.py --runtime <本机 local-test> --output <Git 外目录> --validation dual-version/VALIDATION-v1.3.0.json`，可加 `--source <本机纯伴奏 WAV>` 改用参考旋律模式。全部通过后 `passed` 变为 true，并记录本机 FFmpeg 是否含 Rubber Band。
 4. 确认队列空闲后使用 `dual-version/deploy-release.ps1 -AppRoot <现有 sing-studio 目录>` 更新；再试听变调、Slowed 与混响结果。
 5. 若本机 FFmpeg 不含 Rubber Band，功能仍可用（atempo 方式），较大的变调变速音质会差一些；可考虑换用含 librubberband 的 FFmpeg 构建，需用户批准后再安装。

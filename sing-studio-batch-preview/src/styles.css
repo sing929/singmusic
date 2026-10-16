@@ -42,3 +42,5 @@ html{scroll-padding-bottom:100px}input,select,textarea,summary{scroll-margin-bot
 .song-adjust{display:flex;flex-direction:column;gap:10px;margin-top:10px}.song-adjust .adjust-controls{grid-template-columns:1fr;gap:12px;padding:12px;background:#f6f8f1;border:1px solid #e5eadf;border-radius:6px;font-size:11px}.song-adjust .strength-control,.song-adjust .reverb-control{font-size:11px}
 .modal .adjust-controls{grid-template-columns:1fr;gap:14px;margin-top:18px}.version-card.derived{background:#f6f8f1;border-style:dashed}
 @media(max-width:700px){.adjust-controls{grid-template-columns:1fr}}
+.version-count{display:flex;align-items:center;gap:14px 18px;flex-wrap:wrap;margin-top:18px;font-size:12px;color:#687861;line-height:1.7}.version-count .choice-field{flex-direction:row;align-items:center;gap:10px;font-size:12px;color:#526353}.version-count select{width:auto;min-width:180px}
+.song-version-styles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.style-clash{color:#995143!important;font-size:11px}@media(max-width:700px){.song-version-styles{grid-template-columns:1fr}}

@@ -52,3 +52,8 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 - Two kinds of change: independent key (semitones) and tempo (time-stretch), and Slowed / Sped up where pitch follows speed. Optional reverb with an on/off switch and amount.
 - Voice swap is deferred to a later, separate update.
 - Code is written on a development PC and delivered as a GitHub branch + pull request; real YuE2 testing and installation happen on the i7 + RTX 5070 app PC.
+
+## Confirmed versions-per-song brief — 2026-10-16
+- One song can generate 1–10 complete versions (A–J), each with a different style, replacing the fixed A/B pair.
+- A shared version count with a per-song override; per-version styles follow the shared ones unless set for that song.
+- Shipped inside v1.3.0 together with key / tempo; voice swap remains a later v1.4.0 update.
