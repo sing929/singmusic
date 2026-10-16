@@ -1,0 +1,18 @@
+# Seed-VC v1 singing voice conversion (44.1 kHz, F0), inference only, for the separate
+# local-test/seed-vc/env. Pinned so the bundle downloaded on one PC installs the same set
+# on the app PC. PyTorch 2.7 + CUDA 12.8 is the first stable line built for RTX 50 (sm_120).
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.7.1+cu128
+torchaudio==2.7.1+cu128
+numpy==1.26.4
+scipy==1.13.1
+librosa==0.10.2
+soundfile==0.12.1
+huggingface-hub==0.28.1
+transformers==4.46.3
+munch==4.0.0
+einops==0.8.0
+descript-audio-codec==1.0.0
+pyyaml==6.0.2
+matplotlib==3.9.2
+tqdm==4.67.1

@@ -203,8 +203,10 @@ def validate(jobdir,config):
             filename=stem+ext
             (jobdir/files[kind]).replace(jobdir/filename)
             files[kind]=filename
-    write_json(jobdir/'result.json',{'files':files,'checks':checks,
-        'notice':'已在本机对原作品变调变速，未重新生成；请试听复核音质。' if derived else ('已按纯音乐要求生成，跳过歌词识别；请试听复核。'+('自由重创允许旋律及段落变化。' if config.get('melody_mode')=='free' else '')) if config.get('instrumental') else ('保留原唱模式已做自动对齐，仍需试听复核。' if config['mode']=='preserve' else ('YuE2 按歌词和目标要求自由重创；旋律、段落与声音可能变化，请试听复核。' if config.get('melody_mode')=='free' else 'YuE2 根据识别的旋律重新演绎；人声与歌词可能变化，请试听复核。'))})
+    notice='已在本机对原作品变调变速，未重新生成；请试听复核音质。' if derived else ('已按纯音乐要求生成，跳过歌词识别；请试听复核。'+('自由重创允许旋律及段落变化。' if config.get('melody_mode')=='free' else '')) if config.get('instrumental') else ('保留原唱模式已做自动对齐，仍需试听复核。' if config['mode']=='preserve' else ('YuE2 按歌词和目标要求自由重创；旋律、段落与声音可能变化，请试听复核。' if config.get('melody_mode')=='free' else 'YuE2 根据识别的旋律重新演绎；人声与歌词可能变化，请试听复核。'))
+    swap=json.loads((jobdir/'voice-swap.json').read_text(encoding='utf-8')) if config.get('voice') and not derived and (jobdir/'voice-swap.json').exists() else None
+    if swap:notice+=swap['notice']
+    write_json(jobdir/'result.json',{'files':files,'checks':checks,'notice':notice})
 
 def reuse_analysis(jobdir,config):
     """Only reuse preprocessing of this pair's identical source; never generated audio or semantic tokens."""
@@ -219,11 +221,13 @@ def reuse_analysis(jobdir,config):
         for name in ('lyrics.json','melody.abc'):
             if name=='lyrics.json' and config.get('instrumental'):continue
             if (prior/name).exists():shutil.copy2(prior/name,jobdir/name)
-        stems=prior/'original-stems'
-        if (stems/'stems.json').exists():
-            target=jobdir/'original-stems';shutil.copytree(stems,target,dirs_exist_ok=True)
-            old_stems=json.loads((stems/'stems.json').read_text(encoding='utf-8'))
-            write_json(target/'stems.json',{k:str(target/Path(v).name) for k,v in old_stems.items()})
+        # The voice-swap reference may come from the un-shifted original (reference-stems).
+        for name in ('original-stems','reference-stems'):
+            stems=prior/name
+            if (stems/'stems.json').exists():
+                target=jobdir/name;shutil.copytree(stems,target,dirs_exist_ok=True)
+                old_stems=json.loads((stems/'stems.json').read_text(encoding='utf-8'))
+                write_json(target/'stems.json',{k:str(target/Path(v).name) for k,v in old_stems.items()})
         write_json(jobdir/'reused-analysis.json',{'from':identifier,'reused_at':time.time()})
         return True
     except (OSError,ValueError):return False
@@ -248,6 +252,11 @@ def run_pipeline(jobdir,config):
     def stage(name):
         subprocess.run([str(PYTHON),str(Path(__file__)),str(jobdir),'--stage',name],check=True,
             cwd=str(ROOT),creationflags=CREATE_NO_WINDOW,timeout=max(3600,int(config["duration"]*40)))
+    voice=config.get('voice')
+    if voice:
+        import voice_swap
+        # Fail before any GPU time is spent when the separate engine is missing.
+        if not voice_swap.available():raise RuntimeError('换声引擎（Seed-VC）未安装或未通过自检，无法换成原唱音色。')
     progress('preparing','正在准备整首音频')
     subprocess.run([str(FFMPEG),'-nostdin','-y','-v','error','-ss',str(config['start']),'-i',config['source'],
         '-t',str(config.get('source_duration',config['duration'])),'-ac','2','-ar','48000','-c:a','pcm_s16le',str(jobdir/'source.wav')],
@@ -255,6 +264,8 @@ def run_pipeline(jobdir,config):
     adjust=config.get('adjust');reports={}
     # Shift the reference itself, so separation, melody and YuE2 all follow the new key and tempo.
     if audio_adjust.changes_source(adjust):
+        # The target timbre is the singer's real voice, before any key or tempo change.
+        if voice:shutil.copy2(jobdir/'source.wav',jobdir/'source-unshifted.wav')
         progress('adjusting','正在变调变速原曲：'+audio_adjust.label(adjust,reverb=False))
         reports['source']=audio_adjust.render(jobdir/'source.wav',jobdir/'source.wav',adjust,FFMPEG,
             target_frames=round(config['duration']*audio_adjust.RATE),include_reverb=False,subtype='PCM_16')
@@ -273,11 +284,20 @@ def run_pipeline(jobdir,config):
     elif not reused and not config.get('lyrics','').strip() and config.get('auto_lyrics',True):
         progress('lyrics','正在本机识别歌词')
         stage('lyrics')
+    if voice:
+        stems=jobdir/('reference-stems' if (jobdir/'source-unshifted.wav').exists() else 'original-stems')
+        if not (stems/'stems.json').exists():
+            progress('separating','正在分离原唱人声，作为换声的目标音色')
+            stage('separate-reference' if stems.name=='reference-stems' else 'separate-original')
+        progress('separating','正在挑选原唱音色参考片段');voice_swap.prepare_reference(jobdir,stems)
     write_json(jobdir/'preprocessing.json',{'completed_at':time.time()})
     progress('generating','正在本机生成新版本');stage('generate')
     if config['mode']=='preserve':
         progress('cleaning','正在清理新伴奏中的人声');stage('separate-generated')
         progress('aligning','正在对齐新伴奏并混入原唱');stage('align')
+    elif voice:
+        progress('cleaning','正在分离新生成的人声与伴奏');stage('separate-generated')
+        progress('voice','正在换成原唱音色');voice_swap.convert(jobdir,config,progress)
     else:
         (jobdir/'generated.wav').replace(jobdir/'result.wav')
     if adjust and adjust['reverb']:
@@ -299,6 +319,7 @@ if __name__=='__main__':
         elif args.stage=='generate':generate(directory,config)
         elif args.stage=='separate-original':separate(directory/'source.wav',directory/'original-stems')
         elif args.stage=='separate-generated':separate(directory/'generated.wav',directory/'generated-stems')
+        elif args.stage=='separate-reference':separate(directory/'source-unshifted.wav',directory/'reference-stems')
         elif args.stage=='align':align_and_mix(directory)
         elif args.stage=='validate':validate(directory,config)
         else:run_pipeline(directory,config)
