@@ -41,6 +41,8 @@
 !/dual-version/seedvc-download.ps1
 !/dual-version/seedvc-install.ps1
 !/dual-version/VALIDATION-v1.4.0.json
+!/dual-version/test_speed_variants.py
+!/dual-version/VALIDATION-v1.5.0.json
 !/sing-studio-batch-preview/
 /sing-studio-batch-preview/*
 !/sing-studio-batch-preview/src/

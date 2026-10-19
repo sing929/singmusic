@@ -1,0 +1,57 @@
+{
+  "version": "1.5.0",
+  "real_local_inference": false,
+  "subjective_listening_verified": false,
+  "passed": false,
+  "dev_checks_passed": true,
+  "required_benchmarks": [
+    "adjust",
+    "voice"
+  ],
+  "dev_environment": "Development PC (Xeon + GTX 1070) without YuE2 or Seed-VC: stand-in runtime with FFmpeg 8.1.1, Python 3.11, numpy/scipy/soundfile/librosa and placeholder YuE2 files; a stand-in Seed-VC inference.py with the pinned interface runs under the real seedvc_runner.py.",
+  "speed_versions": {
+    "presets": {
+      "Speed Up": {"tempo": 112, "semitones": 1},
+      "Slowed": {"tempo": 85, "semitones": -2},
+      "Super Slowed": {"tempo": 75, "semitones": -3}
+    },
+    "method": "Derived key/tempo job on the finished version (audio_adjust independent mode: Rubber Band when the local FFmpeg has it, else asetrate + atempo); no reverb; no regeneration.",
+    "queued_by": "service.finish_attempt after a generated version completes, once per version, when the job's speed_variants flag is on."
+  },
+  "frontend_build": true,
+  "packaging_tests": 4,
+  "backend_regressions": 8,
+  "control_regressions": 6,
+  "instrumental_regressions": 6,
+  "adjust_regressions": 8,
+  "versions_regressions": 4,
+  "voice_regressions": 9,
+  "speed_variant_regressions": 6,
+  "speed_variant_checks": [
+    "Presets are exact named independent adjustments; a name that does not match its preset is refused; plain adjustments never gain a name; label returns the preset name.",
+    "Shared switch defaults on, persists off/on over HTTP, refuses non-booleans, and an unusable stored value falls back to on; batch items carry speed_variants into config and job, invalid values reject the batch.",
+    "A completed generated version queues exactly Speed Up, Slowed and Super Slowed (worker order), auto, same group and letter, parent WAV as source, preset durations, names with Original Voice kept; finishing again never duplicates.",
+    "Nothing is queued for a switched-off version, a failed attempt, or a derived (adjust) work.",
+    "Queueing problems are recorded in speed_variant_errors on the parent and never break the worker.",
+    "Real FFmpeg render of Speed Up: output 1/1.12 of the length, one semitone higher, named (Speed Up).wav/.mp3, derived notice, parent WAV untouched."
+  ],
+  "browser_verified": [
+    "Shared settings show the new panel with the three presets and the switch on by default",
+    "Switching off updates the heading, the footer count and the saved setting; switching on restores them",
+    "Footer shows the versions plus 3x speed versions; the confirmation dialog shows N full versions + 3N speed versions",
+    "My Works shows the three auto speed versions under the same song with badges Speed Up / Slowed / Super Slowed and the version letter, names keep Original Voice",
+    "No application console errors"
+  ],
+  "pending": [
+    "Run seedvc-download.ps1 on the internet PC and seedvc-install.ps1 on the RTX 5070 PC; the GPU self-test must pass",
+    "Run benchmark_adjust.py on the RTX 5070 PC with real YuE2 and --validation dual-version/VALIDATION-v1.5.0.json",
+    "Run benchmark_voice.py on the RTX 5070 PC with a local song that has vocals and --validation dual-version/VALIDATION-v1.5.0.json",
+    "Subjective listening of the Speed Up / Slowed / Super Slowed versions of a real generated song, and of voice-swapped results against generated.wav"
+  ],
+  "validation_limitations": [
+    "No real YuE2, UVR or Seed-VC inference was possible on the development PC; the speed versions were rendered from stand-in and synthetic audio only.",
+    "Listening quality of the independent tempo/pitch change at 1.12x / 0.85x / 0.75x on real songs is not verified; Rubber Band availability on the app PC's FFmpeg decides the method.",
+    "Processing time of the three derived versions on the app PC is not measured; it is CPU-only and runs in the effects queue beside generation."
+  ],
+  "local_artifacts_excluded_from_git": true
+}
