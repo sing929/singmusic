@@ -48,7 +48,8 @@ def stored_voice(value,inherit=False):
 def versioned_track(t):
     """Per-song version styles ('' follows the shared style); style / style_b stay their A and B entries."""
     styles=t.get('styles') if isinstance(t.get('styles'),list) and len(t['styles'])==MAX_VERSIONS else ['']*MAX_VERSIONS
-    return {**t,'styles':[t.get('style',''),t.get('style_b',''),*styles[2:]],'version_count':t.get('version_count'),'voice_swap':stored_voice(t.get('voice_swap'),True)}
+    return {**t,'styles':[t.get('style',''),t.get('style_b',''),*styles[2:]],'version_count':t.get('version_count'),'voice_swap':stored_voice(t.get('voice_swap'),True),
+        'speed_variants':t.get('speed_variants') if isinstance(t.get('speed_variants'),bool) else None}
 
 def public_track(t):return {k:v for k,v in versioned_track(t).items() if k!='source'}
 
@@ -483,8 +484,9 @@ class Handler(server.Handler):
             if match:
                 with LOCK:
                     value=track(match[1])
-                    for key in ('lyrics','style','style_b','mode','hidden','gender','tone','change_strength','melody_mode','instructions','instrumental','version_count'):
+                    for key in ('lyrics','style','style_b','mode','hidden','gender','tone','change_strength','melody_mode','instructions','instrumental','version_count','speed_variants'):
                         if key in payload:value[key]=payload[key]
+                    if not isinstance(value.get('speed_variants'),(bool,type(None))):raise ValueError('变速版本设置无效。')
                     if 'adjust' in payload:value['adjust']=audio_adjust.validate(payload['adjust'],inherit=True)
                     if 'voice_swap' in payload:value['voice_swap']=voice_swap.validate(payload['voice_swap'],inherit=True)
                     version_count(value.get('version_count'),inherit=True)

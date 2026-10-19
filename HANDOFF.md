@@ -4,15 +4,15 @@
 
 - 用户确认需求（2026-10-19）：在每首 1–10 个版本之上，每个版本完成后再自动得到 3 个变速版本，一次最多 40 个作品。三个预设固定为 Speed Up（速度 1.12 ×、升 1 个半音）、Slowed（0.85 ×、降 2 个半音）、Super Slowed（0.75 ×、降 3 个半音）；速度与音高**分别设定**（不是唱片式音高随速度），**不加混响**；由已完成的版本在本机后处理，不用 YuE2 重新生成；适用于全新演绎、保留原唱与纯音乐；统一设置一个开关，默认开启；名称用英文预设名；基于 PR #2（v1.4.0）另开分支与 PR。
 - `dual-version/audio_adjust.py`：新增 `PRESETS` 与 `preset(name)`；`validate()` 接受可选 `preset` 字段，且只在调整与预设完全一致时保留（名称不会与实际声音不符）；`label()` 对带预设的调整返回预设名，作品名因此为 `Lo-fi 歌名 (Speed Up)`，换声作品为 `(Original Voice, Speed Up)`，再变调变速时继续累加。
-- `dual-version/service.py`：设置新增 `speed_variants`（布尔，默认 `true`，旧值非布尔时回退为开启；`/api/settings` 校验）；`prepare_job` 把每个任务的 `speed_variants` 写入 config 与 job（排队后改设置不影响）；`create_adjustment` 拆出 `queue_adjustment(identifier, adjust, auto)`（需持有 LOCK）；新增 `queue_speed_variants(meta)`：父任务完成且已保存后按 `PRESETS` 顺序各派生一个 `kind: adjust` 任务（`auto: true`、同 `group_id` / `variant`），派生的 id 记入父任务 `speed_variant_ids`，失败记入 `speed_variant_errors`，只派生一次（重启恢复或重复调用不会重复）；手动变调变速另存的作品（`kind: adjust`）不再派生。`finish_attempt` 成功时先保存完成状态再派生。
-- 界面 `App.jsx` / `styles.css`：统一设置新增“加速与慢速版本”面板（开关、三张预设卡、说明）；设置随其他统一设置自动保存并在刷新后恢复；批次每项带 `speed_variants`；底部“共 N 个版本，另加 3N 个变速版本”、确认对话框“N 个完整版本 + 3N 个变速版本”、入队提示作品总数；作品卡片对自动派生作品显示预设名与版本字母及“自动变速版本 · 本机处理”。
+- `dual-version/service.py`：设置新增 `speed_variants`（布尔，默认 `true`，旧值非布尔时回退为开启；`/api/settings` 校验）；逐首 `track.speed_variants`（布尔，空值跟随统一，`/api/tracks` 校验，旧值无效时按跟随处理）；`prepare_job` 把每个任务的 `speed_variants` 写入 config 与 job（排队后改设置不影响）；`create_adjustment` 拆出 `queue_adjustment(identifier, adjust, auto)`（需持有 LOCK）；新增 `queue_speed_variants(meta)`：父任务完成且已保存后按 `PRESETS` 顺序各派生一个 `kind: adjust` 任务（`auto: true`、同 `group_id` / `variant`），派生的 id 记入父任务 `speed_variant_ids`，失败记入 `speed_variant_errors`，只派生一次（重启恢复或重复调用不会重复）；手动变调变速另存的作品（`kind: adjust`）不再派生。`finish_attempt` 成功时先保存完成状态再派生。
+- 界面 `App.jsx` / `styles.css`：统一设置新增“加速与慢速版本”面板（开关、三张预设卡、说明）；设置随其他统一设置自动保存并在刷新后恢复；批次每项带 `speed_variants`（逐首优先于统一）；逐首“单独调整”新增“加速与慢速版本”下拉（跟随统一 / 生成 3 个变速版本 / 只生成原速版本），计数按每首实际设置累计；底部“共 N 个版本，另加 3N 个变速版本”、确认对话框“N 个完整版本 + 3N 个变速版本”、入队提示作品总数；作品卡片对自动派生作品显示预设名与版本字母及“自动变速版本 · 本机处理”。
 - 版本源、package / lock、README、CHANGELOG 同步为 1.5.0；`.gitignore` 允许清单加入 `test_speed_variants.py` 与 `VALIDATION-v1.5.0.json`。`deploy-release.ps1` 文件清单无需变化（没有新模块）。
 
 ## 本次验证（开发电脑 Xeon + GTX 1070，无 YuE2 / Seed-VC）
 
 - 前端生产构建与 4 项打包测试通过。
-- 后端：新增 `test_speed_variants.py` 6 项通过；原有 8 项 HTTP / 队列、6 项控制、6 项纯音乐、8 项变调变速、4 项多版本、9 项换声回归通过（共 47 项）。其中一项用真实 FFmpeg 渲染 Speed Up：时长为 1/1.12、音高升 1 个半音、文件名带 `(Speed Up)`、父作品 WAV 不变。
-- 隔离浏览器实际操作（替代安装、暂停的队列）：面板与三张预设卡显示、默认开启；关闭后标题、底部计数与保存的设置同步改变，重新开启恢复；确认对话框显示“1 首 → 2 个完整版本 + 6 个变速版本”；对一个已完成的换声作品按工作线程方式派生并渲染三个变速版本后，“我的作品”在同一首歌下显示 `Speed Up · A` / `Slowed · A` / `Super Slowed · A` 卡片，名称为 `Lo-fi Demo Song (Original Voice, Speed Up)` 等；无应用控制台错误。
+- 后端：新增 `test_speed_variants.py` 7 项通过（含逐首开关）；原有 8 项 HTTP / 队列、6 项控制、6 项纯音乐、8 项变调变速、4 项多版本、9 项换声回归通过（共 48 项）。其中一项用真实 FFmpeg 渲染 Speed Up：时长为 1/1.12、音高升 1 个半音、文件名带 `(Speed Up)`、父作品 WAV 不变。
+- 隔离浏览器实际操作（替代安装、暂停的队列）：面板与三张预设卡显示、默认开启；关闭后标题、底部计数与保存的设置同步改变，重新开启恢复；确认对话框显示“1 首 → 2 个完整版本 + 6 个变速版本”；逐首改为“只生成原速版本”后底部与对话框的变速计数随之减少，刷新后保留；对一个已完成的换声作品按工作线程方式派生并渲染三个变速版本后，“我的作品”在同一首歌下显示 `Speed Up · A` / `Slowed · A` / `Super Slowed · A` 卡片，名称为 `Lo-fi Demo Song (Original Voice, Speed Up)` 等；无应用控制台错误。
 - **未完成：应用电脑上的真实生成后自动派生、三种变速的主观试听、处理用时。** `VALIDATION-v1.5.0.json` 为 `passed: false`，所需基准仍是 `adjust` 与 `voice`（变速版本走同一条变调变速管线），两项通过后才能用 `deploy-release.ps1` 部署。v1.4.0 的 Seed-VC 安装与实测同样尚未完成，见下一节。
 
 ## 在应用电脑（i7-14700F + RTX 5070）上完成

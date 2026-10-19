@@ -11,9 +11,18 @@
   "dev_environment": "Development PC (Xeon + GTX 1070) without YuE2 or Seed-VC: stand-in runtime with FFmpeg 8.1.1, Python 3.11, numpy/scipy/soundfile/librosa and placeholder YuE2 files; a stand-in Seed-VC inference.py with the pinned interface runs under the real seedvc_runner.py.",
   "speed_versions": {
     "presets": {
-      "Speed Up": {"tempo": 112, "semitones": 1},
-      "Slowed": {"tempo": 85, "semitones": -2},
-      "Super Slowed": {"tempo": 75, "semitones": -3}
+      "Speed Up": {
+        "tempo": 112,
+        "semitones": 1
+      },
+      "Slowed": {
+        "tempo": 85,
+        "semitones": -2
+      },
+      "Super Slowed": {
+        "tempo": 75,
+        "semitones": -3
+      }
     },
     "method": "Derived key/tempo job on the finished version (audio_adjust independent mode: Rubber Band when the local FFmpeg has it, else asetrate + atempo); no reverb; no regeneration.",
     "queued_by": "service.finish_attempt after a generated version completes, once per version, when the job's speed_variants flag is on."
@@ -26,10 +35,11 @@
   "adjust_regressions": 8,
   "versions_regressions": 4,
   "voice_regressions": 9,
-  "speed_variant_regressions": 6,
+  "speed_variant_regressions": 7,
   "speed_variant_checks": [
     "Presets are exact named independent adjustments; a name that does not match its preset is refused; plain adjustments never gain a name; label returns the preset name.",
     "Shared switch defaults on, persists off/on over HTTP, refuses non-booleans, and an unusable stored value falls back to on; batch items carry speed_variants into config and job, invalid values reject the batch.",
+    "Per-song override: null follows the shared switch, true/false persist and show in the track list, non-boolean values are refused, an unusable stored value follows the shared switch.",
     "A completed generated version queues exactly Speed Up, Slowed and Super Slowed (worker order), auto, same group and letter, parent WAV as source, preset durations, names with Original Voice kept; finishing again never duplicates.",
     "Nothing is queued for a switched-off version, a failed attempt, or a derived (adjust) work.",
     "Queueing problems are recorded in speed_variant_errors on the parent and never break the worker.",
@@ -39,6 +49,7 @@
     "Shared settings show the new panel with the three presets and the switch on by default",
     "Switching off updates the heading, the footer count and the saved setting; switching on restores them",
     "Footer shows the versions plus 3x speed versions; the confirmation dialog shows N full versions + 3N speed versions",
+    "Per-song \"加速与慢速版本\" select: switching one song to original speed only lowers the footer and dialog counts and survives a reload",
     "My Works shows the three auto speed versions under the same song with badges Speed Up / Slowed / Super Slowed and the version letter, names keep Original Voice",
     "No application console errors"
   ],

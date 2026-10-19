@@ -127,6 +127,26 @@ class SpeedVariantsTest(unittest.TestCase):
         finally:
             stop()
 
+    def test_per_song_override_follows_or_replaces_the_shared_switch(self):
+        tid = 'b' * 32
+        (service.TRACKS / tid).mkdir()
+        service.save(service.TRACKS / tid / 'track.json', {'id': tid, 'title': 'Song', 'duration': 30, 'source': 'unused.wav'})
+        api, rejected, stop = self.http()
+        mine = lambda: next(t for t in api('/api/state')['tracks'] if t['id'] == tid)['speed_variants']
+        try:
+            self.assertIsNone(mine())
+            self.assertIs(api('/api/tracks/' + tid, {'speed_variants': False})['speed_variants'], False)
+            self.assertIs(service.read(service.TRACKS / tid / 'track.json')['speed_variants'], False)
+            self.assertIs(mine(), False)
+            self.assertIsNone(api('/api/tracks/' + tid, {'speed_variants': None})['speed_variants'])
+            self.assertIn('变速版本', rejected('/api/tracks/' + tid, {'speed_variants': 'off'}))
+            self.assertIn('变速版本', rejected('/api/tracks/' + tid, {'speed_variants': 1}))
+            # An unusable stored value follows the shared switch instead of breaking the list.
+            service.save(service.TRACKS / tid / 'track.json', {**service.read(service.TRACKS / tid / 'track.json'), 'speed_variants': 'old'})
+            self.assertIsNone(mine())
+        finally:
+            stop()
+
     def test_completed_version_queues_three_named_variants_once(self):
         parent = self.finished_version(voice={'target': 'original', 'octave': 'auto'})
         meta = service.finish_attempt(parent, 0)
