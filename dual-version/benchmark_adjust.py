@@ -112,12 +112,10 @@ def main():
         item=derived_run(second,result);report['runs'].append(item);print(json.dumps(item,ensure_ascii=False),flush=True)
     report['passed']=len(report['runs'])==2 and all(r['passed'] for r in report['runs']);save()
     if args.validation:
-        validation=json.loads(args.validation.read_text(encoding='utf-8'))
-        validation.update(real_local_inference=True,real_inference_runs=report['runs'],ffmpeg_rubberband=report['ffmpeg_rubberband'],
-            real_inference_reference=report['reference'],real_inference_passed=report['passed'],
-            passed=bool(validation.get('dev_checks_passed')) and report['passed'],
-            pending=[p for p in validation.get('pending',[]) if 'benchmark_adjust' not in p] if report['passed'] else validation.get('pending',[]))
-        args.validation.write_text(json.dumps(validation,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+        # Shared with benchmark_voice.py: a release passes only when every required benchmark passed.
+        from benchmark_voice import record
+        report['recorded_at']=time.strftime('%Y-%m-%dT%H:%M:%S')
+        record(args.validation,'adjust',report)
     return 0 if report['passed'] else 1
 
 

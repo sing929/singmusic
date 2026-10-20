@@ -33,6 +33,14 @@
 !/dual-version/test_versions.py
 !/dual-version/benchmark_adjust.py
 !/dual-version/VALIDATION-v1.3.0.json
+!/dual-version/voice_swap.py
+!/dual-version/seedvc_runner.py
+!/dual-version/test_voice.py
+!/dual-version/benchmark_voice.py
+!/dual-version/seedvc-requirements.txt
+!/dual-version/seedvc-download.ps1
+!/dual-version/seedvc-install.ps1
+!/dual-version/VALIDATION-v1.4.0.json
 !/sing-studio-batch-preview/
 /sing-studio-batch-preview/*
 !/sing-studio-batch-preview/src/

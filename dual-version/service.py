@@ -5,6 +5,7 @@ from urllib.parse import urlsplit, unquote, quote
 from http.server import ThreadingHTTPServer
 import server
 import audio_adjust
+import voice_swap
 from generation_controls import RELEASE, VERSION, CONTROL_VERSION, DEFAULT_STRENGTH, LEGACY_INSTRUCTIONS, validate_controls, text_field, build_caption, effective_controls, output_name
 from generation_controls import MAX_VERSIONS, LETTERS, version_count, text_list, default_styles
 
@@ -39,10 +40,15 @@ def track(identifier):
     if not value:raise ValueError('找不到这首歌曲。')
     return value
 
+def stored_voice(value,inherit=False):
+    """A saved voice swap setting, or the default / None when the stored shape is no longer valid."""
+    try:return voice_swap.validate(value,inherit=inherit)
+    except ValueError:return None if inherit else voice_swap.validate({})
+
 def versioned_track(t):
     """Per-song version styles ('' follows the shared style); style / style_b stay their A and B entries."""
     styles=t.get('styles') if isinstance(t.get('styles'),list) and len(t['styles'])==MAX_VERSIONS else ['']*MAX_VERSIONS
-    return {**t,'styles':[t.get('style',''),t.get('style_b',''),*styles[2:]],'version_count':t.get('version_count')}
+    return {**t,'styles':[t.get('style',''),t.get('style_b',''),*styles[2:]],'version_count':t.get('version_count'),'voice_swap':stored_voice(t.get('voice_swap'),True)}
 
 def public_track(t):return {k:v for k,v in versioned_track(t).items() if k!='source'}
 
@@ -52,7 +58,8 @@ def adjust_history(meta):
     return meta.get('adjust_history') or ([meta['adjust']] if meta.get('adjust') else [])
 
 def job_output_name(meta):
-    changes=', '.join(filter(None,(audio_adjust.label(a) for a in adjust_history(meta))))
+    labels=[voice_swap.LABEL] if meta.get('voice') else []
+    changes=', '.join(filter(None,labels+[audio_adjust.label(a) for a in adjust_history(meta)]))
     return output_name(meta.get('style',''),meta['title']+(f' ({changes})' if changes else ''))
 
 def result_file(directory,result,kind,suffixes=('.wav','.mp3')):
@@ -77,6 +84,7 @@ def public_job(directory):
         value['urls']={k:f'/results/{value["id"]}/{k}' for k in result.get('files',{})}
         value['checks']=result.get('checks',{})
         value['notice']=result.get('notice','')
+        if value.get('voice') and value.get('kind')!='adjust':value['voice_info']=voice_swap.summary(read(directory/'voice-swap.json'))
     return value
 
 def jobs():return sorted(filter(None,(public_job(p) for p in JOBS.iterdir() if p.is_dir())),key=lambda x:x.get('queue_order',x['created_at']),reverse=True)
@@ -85,12 +93,13 @@ def settings():
     value = {**{'profile':'quality','style_b':'Jazz','gender':'auto','tone':'natural',
         'style':'R&B','mode':'remix','format':'both','instructions':'','paused':False,
         'instructions_a':'','instructions_b':'','change_strength':DEFAULT_STRENGTH,'melody_mode':'reference',
-        'adjust':dict(audio_adjust.DEFAULT),'version_count':2},
+        'adjust':dict(audio_adjust.DEFAULT),'version_count':2,'voice_swap':voice_swap.validate({})},
         **read(DATA/'settings.json',{})}
     # Only migrate the exact old built-in text, never arbitrary user writing.
     if not value.get('controls_version') and value['instructions'] == LEGACY_INSTRUCTIONS:
         value['instructions'] = ''
     value['controls_version'] = CONTROL_VERSION
+    value['voice_swap'] = stored_voice(value['voice_swap'])
     styles=value.get('styles')
     if not (isinstance(styles,list) and len(styles)==MAX_VERSIONS):styles=default_styles(str(value['style']),str(value['style_b']))
     notes=value.get('version_instructions')
@@ -126,6 +135,9 @@ def prepare_job(payload):
     if mode=='preserve' or instrumental:gender='auto';tone='natural'
     strength,melody=validate_controls(payload)
     if mode=='preserve':melody='reference'
+    # Voice swap replaces generated singing only; preserve keeps the recording, instrumental has none.
+    voice=None if mode=='preserve' or instrumental else voice_swap.validate_job(payload.get('voice'))
+    if voice and not voice_swap.available():raise ValueError(f'《{t["title"]}》要换成原唱音色，但本机还没有安装换声引擎（Seed-VC）。请先按说明安装，或关闭“换成原唱音色”。')
     adjust=audio_adjust.validate(payload.get('adjust') or audio_adjust.DEFAULT)
     adjust=adjust if audio_adjust.changes_anything(adjust) else None
     source_duration=duration
@@ -133,13 +145,13 @@ def prepare_job(payload):
         duration=audio_adjust.output_seconds(source_duration,adjust)
         if not 5<=duration<=600:raise ValueError(f'《{t["title"]}》变速后为 {duration/60:.1f} 分钟，须在 5 秒至 10 分钟之间。')
     config={'profile':profile,'gender':gender,'tone':tone,'engine':'yue2','track_id':t['id'],'source':t['source'],'start':0,'duration':duration,'seed':seed,
-        'source_duration':source_duration,'adjust':adjust,
+        'source_duration':source_duration,'adjust':adjust,'voice':voice,
         'mode':mode,'caption':caption,'lyrics':'' if instrumental else lyrics,'auto_lyrics':not instrumental,'instrumental':instrumental,'format':fmt,'style':style,
         'app_version':VERSION,'controls_version':CONTROL_VERSION,'change_strength':strength,'melody_mode':melody,
         'instructions':instructions,'variant_instructions':variant_instructions}
     config['effective_controls']=effective_controls(config)
     identifier=uuid.uuid4().hex
-    meta={'id':identifier,'engine':'yue2','track_id':t['id'],'title':t['title'],'style':config['style'],'mode':mode,'adjust':adjust,
+    meta={'id':identifier,'engine':'yue2','track_id':t['id'],'title':t['title'],'style':config['style'],'mode':mode,'adjust':adjust,'voice':voice,
         'duration':duration,'start':0,'state':'queued','created_at':time.time(),'attempt':0,'max_attempts':2}
     config['output_name']=meta['output_name']=job_output_name(meta)
     meta['config']={k:v for k,v in config.items() if k!='source'}
@@ -164,11 +176,12 @@ def create_batch(payload):
             names=[str(v.get('style','')).strip().casefold() for v in variants]
             if len(set(names))!=len(names):raise ValueError('同一首歌的各版本请选择不同风格。')
             pair=uuid.uuid4().hex
-            base={k:v for k,v in item.items() if k!='variants'}
+            base={k:v for k,v in item.items() if k not in ('variants','voice_swap','voice')}
             seed=secrets.randbelow(2147483648-MAX_VERSIONS)
+            swap=voice_swap.validate(item.get('voice_swap') if item.get('voice_swap') is not None else {})
             for index,variant in enumerate(variants):
                 override={k:v for k,v in variant.items() if k in ('style','caption','gender','tone','variant_instructions','change_strength','melody_mode')}
-                expanded.append(({**base,**override,'seed':seed+index},pair,LETTERS[index]))
+                expanded.append(({**base,**override,'seed':seed+index,'voice':voice_swap.for_variant(swap,LETTERS[index])},pair,LETTERS[index]))
         if sum(j['state'] in ('queued','running') for j in jobs())+len(expanded)>500:raise ValueError('队列最多容纳 500 首，请等部分任务完成。')
         # Validate the whole batch before creating any visible job.
         prepared=[];first={}
@@ -217,7 +230,7 @@ def create_adjustment(identifier,payload):
         meta={'id':uuid.uuid4().hex,'kind':'adjust','engine':'effects','parent_id':identifier,
             'group_id':parent.get('group_id') or parent.get('pair_id') or identifier,
             'track_id':parent.get('track_id'),'title':parent['title'],'style':parent.get('style',''),'variant':parent.get('variant'),
-            'mode':parent.get('mode','remix'),'adjust':adjust,'adjust_history':adjust_history(parent)+[adjust],
+            'mode':parent.get('mode','remix'),'adjust':adjust,'adjust_history':adjust_history(parent)+[adjust],'voice':parent.get('voice'),
             'duration':duration,'start':0,'state':'queued','created_at':time.time(),'attempt':0,'max_attempts':2,
             'queue_order':max([time.time()]+[j.get('queue_order',j['created_at']) for j in jobs()])+.001}
         meta['output_name']=job_output_name(meta)
@@ -348,7 +361,7 @@ class Handler(server.Handler):
             with LOCK:
                 values=[public_track(SAMPLE)]+[public_track(t) for p in TRACKS.iterdir() if (t:=read(p/'track.json'))]
                 from yue2_engine import available
-                self.json({'token':TOKEN,'tracks':values,'jobs':jobs(),'running':RUNNING,'engines':{'ace':True,'yue2':available()},'settings':settings(),'release':RELEASE},head=head)
+                self.json({'token':TOKEN,'tracks':values,'jobs':jobs(),'running':RUNNING,'engines':{'ace':True,'yue2':available(),'voice':voice_swap.available()},'settings':settings(),'release':RELEASE},head=head)
             return
         match=re.fullmatch(r'/media/(sample|[0-9a-f]{32})',route)
         if match:
@@ -425,6 +438,7 @@ class Handler(server.Handler):
                     for key in ('style','style_b','mode','format','instructions','paused','profile','gender','tone','instructions_a','instructions_b','change_strength','melody_mode','version_count'):
                         if key in payload:current[key]=payload[key]
                     if 'adjust' in payload:current['adjust']=audio_adjust.validate(payload['adjust'])
+                    if 'voice_swap' in payload:current['voice_swap']=voice_swap.validate(payload['voice_swap'])
                     version_count(current['version_count'])
                     if 'styles' in payload:
                         current['styles']=text_list(payload['styles'],40,allow_empty=False,message='每个版本都需要 1–40 字的风格名称。')
@@ -451,6 +465,7 @@ class Handler(server.Handler):
                     for key in ('lyrics','style','style_b','mode','hidden','gender','tone','change_strength','melody_mode','instructions','instrumental','version_count'):
                         if key in payload:value[key]=payload[key]
                     if 'adjust' in payload:value['adjust']=audio_adjust.validate(payload['adjust'],inherit=True)
+                    if 'voice_swap' in payload:value['voice_swap']=voice_swap.validate(payload['voice_swap'],inherit=True)
                     version_count(value.get('version_count'),inherit=True)
                     if 'styles' in payload:
                         value['styles']=text_list(payload['styles'],40,allow_empty=True,message='逐首版本风格无效。')

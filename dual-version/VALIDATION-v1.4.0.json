@@ -1,0 +1,62 @@
+{
+  "version": "1.4.0",
+  "real_local_inference": false,
+  "subjective_listening_verified": false,
+  "passed": false,
+  "dev_checks_passed": true,
+  "required_benchmarks": [
+    "adjust",
+    "voice"
+  ],
+  "dev_environment": "Development PC (Xeon + GTX 1070) without YuE2 or Seed-VC: stand-in runtime with FFmpeg 8.1.1, Python 3.11, numpy/scipy/soundfile/librosa and placeholder YuE2 files; a stand-in Seed-VC inference.py with the pinned interface runs under the real seedvc_runner.py.",
+  "voice_engine": {
+    "name": "Seed-VC v1 singing model (44.1 kHz, F0-conditioned, zero-shot)",
+    "source": "github.com/Plachtaa/seed-vc@51383efd921027683c89e5348211d93ff12ac2a8 (GPL-3.0, run as a separate program)",
+    "pytorch": "2.7.1+cu128 (RTX 50 / sm_120)",
+    "installed_on_dev_pc": false
+  },
+  "frontend_build": true,
+  "packaging_tests": 4,
+  "backend_regressions": 8,
+  "control_regressions": 6,
+  "instrumental_regressions": 6,
+  "adjust_regressions": 8,
+  "voice_regressions": 9,
+  "voice_checks": [
+    "Settings: shared and per-song {versions: ten switches A-J, octave} validation; job-level voice per version letter; whole-octave rule (>= 7 semitones apart, clamped to one octave); unusable stored shapes fall back to the default.",
+    "Analysis: phrases split at gaps and at the quietest point of long regions; the reference clip drops pauses and needs 3 s of singing; pYIN median pitch.",
+    "Runner with a stand-in engine: models load once, one call per phrase with F0 conditioning, no automatic pitch matching, octave, steps, CFG and fp16 as planned; CPU refused without the test flag; self-test.",
+    "Conversion: phrases return to their exact positions, silence stays silent, loudness matches the generated vocal, remix with the generated accompaniment, generated.wav unchanged, engine errors reported, no-vocal results kept and labelled.",
+    "Pipeline: preflight fails before any stage when the engine is missing; reference from original-stems, or from the un-shifted original (reference-stems) after a key change; A/B reuse copies reference-stems.",
+    "HTTP: settings and per-song persistence, A/B mapping, preserve and instrumental ignore voice swap, whole batch rejected when the engine is missing, names with Original Voice (kept by derived key/tempo works), voice_info for finished works.",
+    "Release validation passes only when every required benchmark passed."
+  ],
+  "installer_checks": [
+    "Both PowerShell scripts parse without errors.",
+    "Offline install dry run with a fake bundle: checksum check, base Python from ace-env, separate venv, offline pip and self-test call; a failed self-test leaves no install.json; existing installs need -Replace; damaged files are refused.",
+    "Every pinned package exists for 64-bit Python 3.11 on Windows (PyPI and the PyTorch cu128 index were queried, nothing downloaded); julius and randomname are source-only and are built into wheels by seedvc-download.ps1."
+  ],
+  "browser_verified": [
+    "Not-installed state: badge, disabled switches and install hint",
+    "Installed (stand-in): version A switch and octave rule saved and kept after reload",
+    "Per-song override with A and B on, summary and reset",
+    "Queue confirmation row; queued A/B jobs carry the per-song voice setting and Original Voice names; queue step and row labels",
+    "My Works card and details show octave, phrases, steps and similarity; key/tempo preview name matches the backend name",
+    "Engine missing: confirmation warns and disables confirm",
+    "375 px width without horizontal scrolling; no application console errors",
+    "After merging 1-10 versions: 3 versions with only C switched on queue three jobs where only C carries voice swap; per-song switches follow that song's version count; old-format stored settings fall back to defaults"
+  ],
+  "pending": [
+    "Run seedvc-download.ps1 on the internet PC and seedvc-install.ps1 on the RTX 5070 PC; the GPU self-test must pass",
+    "Run benchmark_adjust.py on the RTX 5070 PC with real YuE2 and --validation dual-version/VALIDATION-v1.4.0.json",
+    "Run benchmark_voice.py on the RTX 5070 PC with a local song that has vocals and --validation dual-version/VALIDATION-v1.4.0.json",
+    "Subjective listening of voice-swapped results against generated.wav in the same job folder"
+  ],
+  "validation_limitations": [
+    "No real Seed-VC, UVR or YuE2 inference was possible on the development PC; the engine was not downloaded there at the user's request.",
+    "Processing time, VRAM use and timbre similarity on the RTX 5070 are not measured yet; benchmark_voice.py records them.",
+    "Seed-VC suggests Python 3.10; the pinned set targets the app PC's existing Python and is confirmed only by the install self-test."
+  ],
+  "local_artifacts_excluded_from_git": true,
+  "versions_regressions": 4
+}
