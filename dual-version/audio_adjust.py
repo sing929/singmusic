@@ -10,6 +10,13 @@ from pathlib import Path
 
 DEFAULT = {'semitones': 0, 'tempo': 100, 'speed_mode': 'independent', 'reverb': 0}
 SPEED_MODES = ('independent', 'linked')
+# Speed / pitch versions made from every finished version. Tempo and key are set
+# independently, so Speed Up is 1.12x with only +1 semitone, not a plain resample.
+PRESETS = {
+    'Speed Up': {'semitones': 1, 'tempo': 112, 'speed_mode': 'independent', 'reverb': 0},
+    'Slowed': {'semitones': -2, 'tempo': 85, 'speed_mode': 'independent', 'reverb': 0},
+    'Super Slowed': {'semitones': -3, 'tempo': 75, 'speed_mode': 'independent', 'reverb': 0},
+}
 RATE = 48000
 FLAGS = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 _RUBBERBAND = {}
@@ -26,15 +33,27 @@ def validate(value, *, inherit=False):
     """A normalized adjustment; None means a song follows the shared setting."""
     if value is None and inherit:
         return None
-    if not isinstance(value, dict) or set(value) - set(DEFAULT):
+    if not isinstance(value, dict) or set(value) - set(DEFAULT) - {'preset'}:
         raise ValueError('变调变速设置无效。')
-    value = {**DEFAULT, **value}
+    name = value.get('preset')
+    value = {**DEFAULT, **{k: v for k, v in value.items() if k != 'preset'}}
     if value['speed_mode'] not in SPEED_MODES:
         raise ValueError('变速方式无效。')
-    return {'semitones': _whole(value['semitones'], -12, 12, '变调须为 -12 至 +12 的整数半音。'),
-            'tempo': _whole(value['tempo'], 50, 150, '速度须为 50%–150% 的整数。'),
-            'speed_mode': value['speed_mode'],
-            'reverb': _whole(value['reverb'], 0, 100, '混响须为 0–100 的整数。')}
+    result = {'semitones': _whole(value['semitones'], -12, 12, '变调须为 -12 至 +12 的整数半音。'),
+              'tempo': _whole(value['tempo'], 50, 150, '速度须为 50%–150% 的整数。'),
+              'speed_mode': value['speed_mode'],
+              'reverb': _whole(value['reverb'], 0, 100, '混响须为 0–100 的整数。')}
+    if name is not None:
+        # A named version must be exactly its preset, so its name never lies about the sound.
+        if name not in PRESETS or result != PRESETS[name]:
+            raise ValueError('变速版本预设无效。')
+        result['preset'] = name
+    return result
+
+
+def preset(name):
+    """The adjustment of a named speed / pitch version, carrying its name for labels."""
+    return {**PRESETS[name], 'preset': name}
 
 
 def speed(adjust):
@@ -69,6 +88,8 @@ def label(adjust, reverb=True):
     """Short portable description, also used in work names: Key -2, Tempo 90%, Reverb 40."""
     if not adjust:
         return ''
+    if adjust.get('preset'):
+        return adjust['preset']
     parts = []
     if adjust['speed_mode'] == 'linked':
         if adjust['tempo'] != 100:
