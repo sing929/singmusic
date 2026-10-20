@@ -4,7 +4,9 @@ from pathlib import Path
 from urllib.parse import urlsplit, unquote, quote
 from http.server import ThreadingHTTPServer
 import server
+import audio_adjust
 from generation_controls import RELEASE, VERSION, CONTROL_VERSION, DEFAULT_STRENGTH, LEGACY_INSTRUCTIONS, validate_controls, text_field, build_caption, effective_controls, output_name
+from generation_controls import MAX_VERSIONS, LETTERS, version_count, text_list, default_styles
 
 ROOT=Path(os.environ.get('SING_APP_ROOT',str(server.ROOT)))
 TEST=Path(os.environ.get('SING_LOCAL_TEST',str(ROOT.parent/'local-test')))
@@ -14,7 +16,9 @@ TRACKS=DATA/'tracks'
 TOKEN=secrets.token_urlsafe(32)
 LOCK=threading.RLock()
 WAKE=threading.Event()
-PROCESS=None
+# Key/tempo jobs on finished works are CPU-only and short; they never wait behind YuE2.
+EFFECTS_WAKE=threading.Event()
+ACTIVE={}
 RUNNING=None
 PYTHON=TEST/'ace-env/Scripts/python.exe'
 FLAGS=getattr(subprocess,'CREATE_NO_WINDOW',0)
@@ -35,12 +39,34 @@ def track(identifier):
     if not value:raise ValueError('找不到这首歌曲。')
     return value
 
-def public_track(t):return {k:v for k,v in t.items() if k!='source'}
+def versioned_track(t):
+    """Per-song version styles ('' follows the shared style); style / style_b stay their A and B entries."""
+    styles=t.get('styles') if isinstance(t.get('styles'),list) and len(t['styles'])==MAX_VERSIONS else ['']*MAX_VERSIONS
+    return {**t,'styles':[t.get('style',''),t.get('style_b',''),*styles[2:]],'version_count':t.get('version_count')}
+
+def public_track(t):return {k:v for k,v in versioned_track(t).items() if k!='source'}
+
+def wake_workers():WAKE.set();EFFECTS_WAKE.set()
+
+def adjust_history(meta):
+    return meta.get('adjust_history') or ([meta['adjust']] if meta.get('adjust') else [])
+
+def job_output_name(meta):
+    changes=', '.join(filter(None,(audio_adjust.label(a) for a in adjust_history(meta))))
+    return output_name(meta.get('style',''),meta['title']+(f' ({changes})' if changes else ''))
+
+def result_file(directory,result,kind,suffixes=('.wav','.mp3')):
+    """Only a declared audio file directly inside this job may be served or reused."""
+    filename=result.get('files',{}).get(kind)
+    if (not isinstance(filename,str) or '/' in filename or '\\' in filename or ':' in filename or
+        Path(filename).suffix.lower() not in suffixes or
+        (directory/filename).resolve().parent!=directory.resolve()):return None
+    return directory/filename
 
 def public_job(directory):
     value=read(directory/'job.json')
     if not value:return None
-    value['output_name']=output_name(value.get('style',''),value['title'])
+    value['output_name']=job_output_name(value)
     value['timing_source']='active_time' if 'processing_seconds' in value else 'legacy_wall_time'
     value['processing_seconds']=processing_seconds(value)
     value['progress']=read(directory/'progress.json',{})
@@ -58,12 +84,19 @@ def jobs():return sorted(filter(None,(public_job(p) for p in JOBS.iterdir() if p
 def settings():
     value = {**{'profile':'quality','style_b':'Jazz','gender':'auto','tone':'natural',
         'style':'R&B','mode':'remix','format':'both','instructions':'','paused':False,
-        'instructions_a':'','instructions_b':'','change_strength':DEFAULT_STRENGTH,'melody_mode':'reference'},
+        'instructions_a':'','instructions_b':'','change_strength':DEFAULT_STRENGTH,'melody_mode':'reference',
+        'adjust':dict(audio_adjust.DEFAULT),'version_count':2},
         **read(DATA/'settings.json',{})}
     # Only migrate the exact old built-in text, never arbitrary user writing.
     if not value.get('controls_version') and value['instructions'] == LEGACY_INSTRUCTIONS:
         value['instructions'] = ''
     value['controls_version'] = CONTROL_VERSION
+    styles=value.get('styles')
+    if not (isinstance(styles,list) and len(styles)==MAX_VERSIONS):styles=default_styles(str(value['style']),str(value['style_b']))
+    notes=value.get('version_instructions')
+    if not (isinstance(notes,list) and len(notes)==MAX_VERSIONS):notes=['']*MAX_VERSIONS
+    value['styles']=[value['style'],value['style_b'],*styles[2:]]
+    value['version_instructions']=[value['instructions_a'],value['instructions_b'],*notes[2:]]
     return value
 
 def prepare_job(payload):
@@ -93,16 +126,24 @@ def prepare_job(payload):
     if mode=='preserve' or instrumental:gender='auto';tone='natural'
     strength,melody=validate_controls(payload)
     if mode=='preserve':melody='reference'
+    adjust=audio_adjust.validate(payload.get('adjust') or audio_adjust.DEFAULT)
+    adjust=adjust if audio_adjust.changes_anything(adjust) else None
+    source_duration=duration
+    if audio_adjust.changes_source(adjust):
+        duration=audio_adjust.output_seconds(source_duration,adjust)
+        if not 5<=duration<=600:raise ValueError(f'《{t["title"]}》变速后为 {duration/60:.1f} 分钟，须在 5 秒至 10 分钟之间。')
     config={'profile':profile,'gender':gender,'tone':tone,'engine':'yue2','track_id':t['id'],'source':t['source'],'start':0,'duration':duration,'seed':seed,
+        'source_duration':source_duration,'adjust':adjust,
         'mode':mode,'caption':caption,'lyrics':'' if instrumental else lyrics,'auto_lyrics':not instrumental,'instrumental':instrumental,'format':fmt,'style':style,
-        'output_name':output_name(style,t['title']),
         'app_version':VERSION,'controls_version':CONTROL_VERSION,'change_strength':strength,'melody_mode':melody,
         'instructions':instructions,'variant_instructions':variant_instructions}
     config['effective_controls']=effective_controls(config)
     identifier=uuid.uuid4().hex
-    return config,{'id':identifier,'engine':'yue2','track_id':t['id'],'title':t['title'],'output_name':config['output_name'],'style':config['style'],'mode':mode,
-        'duration':duration,'start':0,'state':'queued','created_at':time.time(),'attempt':0,'max_attempts':2,
-        'config':{k:v for k,v in config.items() if k!='source'}}
+    meta={'id':identifier,'engine':'yue2','track_id':t['id'],'title':t['title'],'style':config['style'],'mode':mode,'adjust':adjust,
+        'duration':duration,'start':0,'state':'queued','created_at':time.time(),'attempt':0,'max_attempts':2}
+    config['output_name']=meta['output_name']=job_output_name(meta)
+    meta['config']={k:v for k,v in config.items() if k!='source'}
+    return config,meta
 
 def create_batch(payload):
     items=payload.get('items')
@@ -119,14 +160,15 @@ def create_batch(payload):
         for item in items:
             variants=item.get('variants')
             if variants is None:expanded.append((item,None,None));continue
-            if not isinstance(variants,list) or len(variants)!=2 or not all(isinstance(v,dict) for v in variants):raise ValueError('每首歌曲需要 A、B 两个版本。')
-            if str(variants[0].get('style','')).strip().casefold()==str(variants[1].get('style','')).strip().casefold():raise ValueError('A、B 请选择不同风格。')
+            if not isinstance(variants,list) or not 1<=len(variants)<=MAX_VERSIONS or not all(isinstance(v,dict) for v in variants):raise ValueError(f'每首歌曲需要 1–{MAX_VERSIONS} 个版本。')
+            names=[str(v.get('style','')).strip().casefold() for v in variants]
+            if len(set(names))!=len(names):raise ValueError('同一首歌的各版本请选择不同风格。')
             pair=uuid.uuid4().hex
             base={k:v for k,v in item.items() if k!='variants'}
-            seed=secrets.randbelow(2147483646)
+            seed=secrets.randbelow(2147483648-MAX_VERSIONS)
             for index,variant in enumerate(variants):
                 override={k:v for k,v in variant.items() if k in ('style','caption','gender','tone','variant_instructions','change_strength','melody_mode')}
-                expanded.append(({**base,**override,'seed':seed+index},pair,'AB'[index]))
+                expanded.append(({**base,**override,'seed':seed+index},pair,LETTERS[index]))
         if sum(j['state'] in ('queued','running') for j in jobs())+len(expanded)>500:raise ValueError('队列最多容纳 500 首，请等部分任务完成。')
         # Validate the whole batch before creating any visible job.
         prepared=[];first={}
@@ -156,6 +198,38 @@ def commit_batch(journal):
     if 'prepared' in batch:save(journal,{'ids':batch['ids']})
 
 def create_job(payload):return create_batch({'items':[payload],'request_id':uuid.uuid4().hex})['jobs'][0]
+
+def create_adjustment(identifier,payload):
+    """Queue a new work derived from a finished one; the original files stay untouched."""
+    adjust=audio_adjust.validate(payload.get('adjust'))
+    if not audio_adjust.changes_anything(adjust):raise ValueError('请至少调整变调、速度或混响中的一项。')
+    with LOCK:
+        directory=JOBS/identifier;parent=read(directory/'job.json')
+        if not parent or parent.get('state')!='completed':raise ValueError('完成的作品才能变调变速。')
+        result=read(directory/'result.json',{})
+        source=result_file(directory,result,'result',('.wav',))
+        if source is None or not source.is_file():raise ValueError('找不到这首作品的 WAV 音频。')
+        seconds=float(result.get('checks',{}).get('result',{}).get('seconds') or parent['duration'])
+        duration=audio_adjust.output_seconds(seconds,adjust)
+        if not 5<=duration<=1200:raise ValueError(f'变速后为 {duration/60:.1f} 分钟，须在 5 秒至 20 分钟之间。')
+        if sum(j['state'] in ('queued','running') for j in jobs())>=500:raise ValueError('队列最多容纳 500 首，请等部分任务完成。')
+        parent_config=parent.get('config',{})
+        meta={'id':uuid.uuid4().hex,'kind':'adjust','engine':'effects','parent_id':identifier,
+            'group_id':parent.get('group_id') or parent.get('pair_id') or identifier,
+            'track_id':parent.get('track_id'),'title':parent['title'],'style':parent.get('style',''),'variant':parent.get('variant'),
+            'mode':parent.get('mode','remix'),'adjust':adjust,'adjust_history':adjust_history(parent)+[adjust],
+            'duration':duration,'start':0,'state':'queued','created_at':time.time(),'attempt':0,'max_attempts':2,
+            'queue_order':max([time.time()]+[j.get('queue_order',j['created_at']) for j in jobs()])+.001}
+        meta['output_name']=job_output_name(meta)
+        config={'kind':'adjust','engine':'effects','source':str(source),'source_duration':seconds,'duration':duration,
+            'adjust':adjust,'adjust_history':meta['adjust_history'],'parent_id':identifier,'output_name':meta['output_name'],
+            'format':parent_config.get('format','both'),'mode':meta['mode'],'instrumental':bool(parent_config.get('instrumental')),
+            'style':meta['style'],'app_version':VERSION}
+        meta['config']={k:v for k,v in config.items() if k!='source'}
+        target=JOBS/meta['id'];target.mkdir()
+        save(target/'config.json',config);save(target/'job.json',meta)
+    EFFECTS_WAKE.set()
+    return public_job(target)
 
 def processing_seconds(meta):
     stored=meta.get('processing_seconds')
@@ -202,15 +276,20 @@ def finish_attempt(directory,code):
     save(directory/'job.json',meta)
     return meta
 
-def worker():
-    global PROCESS,RUNNING
+def pending_jobs(kind):return [j for j in jobs() if j['state']=='queued' and (j.get('kind')=='adjust')==(kind=='adjust')]
+
+def worker(kind='generate'):
+    """One serialized queue per kind: YuE2 generation, or key/tempo jobs on finished works."""
+    global RUNNING
+    effects=kind=='adjust';wake=EFFECTS_WAKE if effects else WAKE
     while True:
-        WAKE.wait(2);WAKE.clear()
+        wake.wait(2);wake.clear()
         with LOCK:
             if settings().get('paused'):continue
-            pending=[j for j in jobs() if j['state']=='queued']
+            pending=pending_jobs(kind)
             if not pending:continue
-            meta=pending[-1];directory=JOBS/meta['id'];RUNNING=meta['id']
+            meta=pending[-1];directory=JOBS/meta['id']
+            if not effects:RUNNING=meta['id']
             meta['state']='running';meta['attempt']=meta.get('attempt',0)+1
             meta.setdefault('started_at',time.time());meta.setdefault('processing_seconds',0);meta['attempt_started_at']=time.time();meta['heartbeat_at']=time.time()
             save(directory/'job.json',meta)
@@ -218,12 +297,14 @@ def worker():
             for name in ('result.json','error.json'):(directory/name).unlink(missing_ok=True)
             log=(directory/f"worker-attempt-{meta['attempt']}.log").open('w',encoding='utf-8')
             try:
-                PROCESS=subprocess.Popen([str(PYTHON),str(ROOT/'engine.py'),str(directory)],stdout=log,stderr=subprocess.STDOUT,
+                process=subprocess.Popen([str(PYTHON),str(ROOT/'engine.py'),str(directory)],stdout=log,stderr=subprocess.STDOUT,
                     cwd=ROOT,env={**os.environ,'PYTHONUTF8':'1'},creationflags=FLAGS)
-                process=PROCESS
+                ACTIVE[meta['id']]=process
             except Exception as error:
                 save(directory/'error.json',{'error':str(error)})
-                finish_attempt(directory,1);log.close();PROCESS=None;RUNNING=None;WAKE.set();continue
+                finish_attempt(directory,1);log.close()
+                if not effects:RUNNING=None
+                wake.set();continue
         while process.poll() is None:
             try:process.wait(timeout=2)
             except subprocess.TimeoutExpired:
@@ -232,8 +313,9 @@ def worker():
                     if current['state']=='running':current['heartbeat_at']=time.time();save(directory/'job.json',current)
         code=process.returncode;log.close()
         with LOCK:
-            finish_attempt(directory,code);PROCESS=None;RUNNING=None
-        WAKE.set()
+            finish_attempt(directory,code);ACTIVE.pop(meta['id'],None)
+            if not effects:RUNNING=None
+        wake.set()
 
 def cancel(identifier):
     if not re.fullmatch('[0-9a-f]{32}',identifier):raise ValueError('任务不存在。')
@@ -241,9 +323,10 @@ def cancel(identifier):
         directory=JOBS/identifier;meta=read(directory/'job.json')
         if not meta:raise ValueError('任务不存在。')
         if meta['state'] not in ('queued','running'):return meta
-        if RUNNING==identifier and PROCESS and PROCESS.poll() is None:
-            stopped=subprocess.run(['taskkill','/PID',str(PROCESS.pid),'/T','/F'],capture_output=True,creationflags=FLAGS,timeout=20)
-            if stopped.returncode and PROCESS.poll() is None:raise ValueError('暂时无法停止此任务，请稍后重试。')
+        process=ACTIVE.get(identifier)
+        if process and process.poll() is None:
+            stopped=subprocess.run(['taskkill','/PID',str(process.pid),'/T','/F'],capture_output=True,creationflags=FLAGS,timeout=20)
+            if stopped.returncode and process.poll() is None:raise ValueError('暂时无法停止此任务，请稍后重试。')
         close_clock(meta)
         meta['state']='cancelled';meta['finished_at']=time.time();save(directory/'job.json',meta)
         return meta
@@ -275,14 +358,10 @@ class Handler(server.Handler):
         match=re.fullmatch(r'/results/([0-9a-f]{32})/(result|original|vocals|instrumental|mp3)',route)
         if match:
             directory=JOBS/match[1];meta=read(directory/'job.json',{});result=read(directory/'result.json',{})
-            filename=result.get('files',{}).get(match[2])
-            # Only the declared audio file directly inside this job may be served.
-            if (meta.get('state')!='completed' or not isinstance(filename,str) or
-                '/' in filename or '\\' in filename or ':' in filename or
-                Path(filename).suffix.lower() not in ('.wav','.mp3') or
-                (directory/filename).resolve().parent!=directory.resolve()):self.send_error(404);return
-            name=output_name(meta.get('style',''),meta['title'])+Path(filename).suffix if match[2] in ('result','mp3') else None
-            self.send_file(directory/filename,head,name);return
+            path=result_file(directory,result,match[2])
+            if meta.get('state')!='completed' or path is None:self.send_error(404);return
+            name=job_output_name(meta)+path.suffix if match[2] in ('result','mp3') else None
+            self.send_file(path,head,name);return
         super().do_GET(head)
 
     def send_file(self,path,head,download_name=None):
@@ -343,22 +422,41 @@ class Handler(server.Handler):
             if route=='/api/settings':
                 with LOCK:
                     current=settings()
-                    for key in ('style','style_b','mode','format','instructions','paused','profile','gender','tone','instructions_a','instructions_b','change_strength','melody_mode'):
+                    for key in ('style','style_b','mode','format','instructions','paused','profile','gender','tone','instructions_a','instructions_b','change_strength','melody_mode','version_count'):
                         if key in payload:current[key]=payload[key]
+                    if 'adjust' in payload:current['adjust']=audio_adjust.validate(payload['adjust'])
+                    version_count(current['version_count'])
+                    if 'styles' in payload:
+                        current['styles']=text_list(payload['styles'],40,allow_empty=False,message='每个版本都需要 1–40 字的风格名称。')
+                        current['style'],current['style_b']=current['styles'][:2]
+                    if 'version_instructions' in payload:
+                        current['version_instructions']=text_list(payload['version_instructions'],900,allow_empty=True,message='各版本补充要求须为不超过 900 字的文字。')
+                        current['instructions_a'],current['instructions_b']=current['version_instructions'][:2]
+                    current['styles'][:2]=[current['style'],current['style_b']]
+                    current['version_instructions'][:2]=[current['instructions_a'],current['instructions_b']]
+                    text_list(current['styles'],40,allow_empty=False,message='每个版本都需要 1–40 字的风格名称。')
+                    text_list(current['version_instructions'],900,allow_empty=True,message='各版本补充要求须为不超过 900 字的文字。')
                     if current['mode'] not in ('remix','preserve') or current['format'] not in ('both','wav','mp3') or not isinstance(current['paused'],bool):raise ValueError('设置无效。')
                     if not 1<=len(str(current['style']))<=40 or len(str(current['instructions']))>900:raise ValueError('风格名称或描述太长。')
                     from yue2_engine import PROFILES,GENDERS,TONES
                     if current['profile'] not in PROFILES or current['gender'] not in GENDERS or current['tone'] not in TONES or not 1<=len(str(current['style_b']))<=40:raise ValueError('速度或声音设置无效。')
                     validate_controls(current)
                     for key in ('instructions','instructions_a','instructions_b'):text_field(current,key)
-                    save(DATA/'settings.json',current);WAKE.set()
+                    save(DATA/'settings.json',current);wake_workers()
                 self.json(current);return
             match=re.fullmatch(r'/api/tracks/([0-9a-f]{32})',route)
             if match:
                 with LOCK:
                     value=track(match[1])
-                    for key in ('lyrics','style','style_b','mode','hidden','gender','tone','change_strength','melody_mode','instructions','instrumental'):
+                    for key in ('lyrics','style','style_b','mode','hidden','gender','tone','change_strength','melody_mode','instructions','instrumental','version_count'):
                         if key in payload:value[key]=payload[key]
+                    if 'adjust' in payload:value['adjust']=audio_adjust.validate(payload['adjust'],inherit=True)
+                    version_count(value.get('version_count'),inherit=True)
+                    if 'styles' in payload:
+                        value['styles']=text_list(payload['styles'],40,allow_empty=True,message='逐首版本风格无效。')
+                        value['style'],value['style_b']=value['styles'][:2]
+                    value=versioned_track(value)
+                    text_list(value['styles'],40,allow_empty=True,message='逐首版本风格无效。')
                     if not isinstance(value.get('lyrics',''),str) or len(value.get('lyrics',''))>20000 or value.get('mode','') not in ('','remix','preserve') or len(str(value.get('style','')))>40 or not isinstance(value.get('hidden',False),bool):raise ValueError('歌曲设置无效。')
                     if not isinstance(value.get('instrumental',False),bool):raise ValueError('歌曲类型无效。')
                     from yue2_engine import GENDERS,TONES
@@ -369,10 +467,11 @@ class Handler(server.Handler):
             if route=='/api/batch':self.json(create_batch(payload),201);return
             if route=='/api/jobs':self.json(create_job(payload),201);return
             if route=='/api/queue/remove':self.json({'jobs':change_jobs(payload.get('ids'),'remove')});return
-            match=re.fullmatch(r'/api/jobs/([0-9a-f]{32})/(cancel|retry|remove|restore|favorite)',route)
+            match=re.fullmatch(r'/api/jobs/([0-9a-f]{32})/(cancel|retry|remove|restore|favorite|adjust)',route)
             if match:
                 if match[2] in ('remove','restore','favorite'):self.json(change_jobs([match[1]],match[2])[0]);return
                 if match[2]=='cancel':self.json(cancel(match[1]));return
+                if match[2]=='adjust':self.json(create_adjustment(match[1],payload),201);return
                 with LOCK:
                     directory=JOBS/match[1];meta=read(directory/'job.json')
                     if not meta or meta['state'] not in ('failed','cancelled'):raise ValueError('此任务无需重试。')
@@ -382,7 +481,7 @@ class Handler(server.Handler):
                     meta.pop('finished_at',None);meta.pop('error',None)
                     save(directory/'job.json',meta)
                     save(directory/'progress.json',{'stage':'queued','message':'等待重新处理'})
-                    WAKE.set()
+                    wake_workers()
                 self.json(public_job(directory),201);return
             self.send_error(404)
         except (ValueError,TypeError,KeyError) as error:self.json({'error':str(error)},400)
@@ -420,6 +519,7 @@ def main():
             save(directory/'error.json',{'error':'上次本机运行中断。'})
             finish_attempt(directory,1)
     threading.Thread(target=worker,daemon=True).start()
+    threading.Thread(target=worker,args=('adjust',),daemon=True).start()
     if args.desktop:server.desktop()
     http.serve_forever()
 

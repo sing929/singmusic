@@ -1,0 +1,47 @@
+{
+  "version": "1.3.0",
+  "real_local_inference": false,
+  "subjective_listening_verified": false,
+  "passed": false,
+  "dev_checks_passed": true,
+  "dev_environment": "Development PC without the YuE2 install: stand-in runtime with FFmpeg 8.1.1 (Rubber Band), Python 3.11, numpy/scipy/soundfile/librosa and placeholder model files.",
+  "frontend_build": true,
+  "packaging_tests": 4,
+  "backend_regressions": 8,
+  "control_regressions": 6,
+  "instrumental_regressions": 6,
+  "adjust_regressions": 8,
+  "version_regressions": 4,
+  "version_checks": [
+    "Defaults are ten distinct styles; legacy settings keep their A/B styles and fill the rest with unused presets.",
+    "Version style and instruction lists stay mirrored with style/style_b and instructions_a/b; invalid counts and lists are rejected without changing saved settings.",
+    "Per-song styles and counts persist; null follows the shared count.",
+    "Batches of 1 and 10 versions expand to letters A–J with one pair, shared analysis, distinct in-range seeds; duplicate styles, 0 and 11 versions are rejected without creating jobs."
+  ],
+  "adjust_checks": [
+    "Validation rejects out-of-range, fractional, boolean, string and unknown values for key, tempo, mode and reverb.",
+    "Measured pitch and length after +12 semitones, 50% tempo, -5 semitones at 125%, and Slowed 80%, with both Rubber Band and the asetrate/atempo fallback.",
+    "Reverb adds a decorrelated stereo tail after a dry burst and keeps the exact length.",
+    "Pipeline shifts source.wav before generation (stays PCM_16), YuE2 receives the new length, reverb is applied to the result before validation.",
+    "A/B jobs share the adjustment; analysis reuse is refused when the adjustment differs; slowing past 10 minutes is rejected without creating jobs.",
+    "Derived works: new job with its own name and group, WAV/MP3 export, original audio unchanged, download names, chained adjustments, rejected requests leave no jobs."
+  ],
+  "browser_verified": [
+    "Global key/tempo panel: Slowed / Sped up locks the key slider to the speed, reverb toggle and amount, persisted to settings",
+    "Per-song override copies the shared setting, saves Key -2 / Tempo 90%, shown in the song summary",
+    "Queue confirmation shows the shared key/tempo row; queued A/B jobs carry the per-song override and new names",
+    "Live pipeline shifted the reference with Rubber Band: 30 s to 33.333 s, -2 semitones (generation itself unavailable on the development PC)",
+    "My Works dialog: name and length preview, derived Slowed 80% + Reverb 40 work completed in 4 s as 37.5 s WAV + MP3 under the original",
+    "Versions per song: legacy settings migrated, 4 version style groups, duplicate-style warning shown and cleared, per-song count 3 with version C set to Phonk queued exactly A/B/C jobs",
+    "No browser console errors; forest-green and ivory layout kept"
+  ],
+  "pending": [
+    "Run benchmark_adjust.py on the RTX 5070 PC with real YuE2 and --validation dual-version/VALIDATION-v1.3.0.json (sets passed)",
+    "Subjective listening of shifted, slowed and reverb results"
+  ],
+  "validation_limitations": [
+    "No real YuE2 inference was possible on the development PC; generation with a shifted reference still needs the benchmark on the app PC.",
+    "The installed app's FFmpeg may lack Rubber Band; the asetrate/atempo fallback is tested but sounds less clean on large shifts. benchmark_adjust.py records which method the app PC uses."
+  ],
+  "local_artifacts_excluded_from_git": true
+}

@@ -1,8 +1,24 @@
-# Sing Studio · v1.2.0
+# Sing Studio · v1.3.0
 
 本机 YuE2 整首音乐改编工作室。批量导入音频、可选歌词、A/B 完整版本、原唱保留、收藏和可恢复移除。音频、歌词及推理留在电脑上。
 
-这次更新加入逐首“有演唱 / 纯音乐”选择，以及“风格 + 原曲名”的作品与导出命名，例如 `Lo-fi Justin Bieber - Baby.wav`。
+这次更新加入每首 1–10 个版本，以及变调与变速（含 Slowed / Sped up 与可选混响）；变调变速既可在生成前设置，也可对已完成作品另存一份调整后的新作品。
+
+## 每首多个版本
+
+- 在统一设置的“每首版本数量”选择 1–10 个，每个版本（A–J）选择一个目标风格；同一首歌的各版本须为不同风格，重复时界面会提示并阻止开始。
+- 单首歌曲的“版本数”可改为自己的数量，各版本风格下拉菜单空值代表跟随统一。
+- 10 种预设风格：R&B、Lo-fi、Jazz、Acoustic、Remix、Phonk、Hardstyle、Hardtekk、Soul、Funk，也可自定义。“写下具体要求”里每个版本都有独立补充要求。
+- 每个版本都是一次完整的 YuE2 生成，版本越多排队越久；第一个版本做原曲分析，其他版本复用。作品页按歌曲分组显示所有版本。
+
+## 使用变调与变速
+
+- **两种方式**：“独立调整”可单独变调（-12 至 +12 个半音）或变速（50%–150%），变速时音高不变；“Slowed / Sped up”像改变唱片转速，音高随速度一起变化，例如 80% 约降 3.9 个半音。
+- **混响**：勾选后可调 5–100，适合 Slowed + Reverb 风格；混响保持作品原时长，结尾的混响尾音会淡出。
+- **生成前**：在统一设置的“变调与变速”面板设置，或在逐首“单独调整”里改为“单独设置这首歌”。原曲先在本机调整，A / B 两版、旋律与歌词识别都使用调整后的原曲；保留原唱时原唱也一起调整；混响加在生成结果上。速度会改变整首时长，调整后须在 10 分钟以内。
+- **已完成作品**：在“我的作品”点“变调 / 变速”，确认后另存为新作品，不重新生成、原作品不变。新作品显示在同一首歌下，可再次调整；它使用独立的本机处理队列，通常几秒完成，不排在 YuE2 任务之后。
+- **名称**：调整后的作品在“风格 + 原曲名”后附说明，例如 `Lo-fi Justin Bieber - Baby (Slowed 80%, Reverb 40).wav`。
+- 较大的变调或变速可能带来音色失真，请试听复核。本机 FFmpeg 含 Rubber Band 时音质最好；否则自动改用 FFmpeg 的 atempo 方式。
 
 ## 使用新的改编控制
 
@@ -32,7 +48,7 @@
 
 构建前端：在 `sing-studio-batch-preview/` 使用现有 Node 环境运行 `npm ci`（首次准备依赖）、`npm run build` 和 `npm run test:sites`。构建保留原有 Sites 兼容包装；生产功能必须连接本机 Python 服务，本次不发布云站点。
 
-后端验证：用现有音乐环境的 Python 运行 `dual-version/test_controls.py`；运行 `test_backend.py` 前设置 `SING_LOCAL_TEST` 为本机 runtime 目录。后者需要既有示例音频与模型文件来验证可用性，推理本身使用测试进程。真实推理验证另用 `benchmark_controls.py --runtime ... --installed-app ... --output ...`，结果目录须留在 Git 外。
+后端验证：用现有音乐环境的 Python 运行 `dual-version/test_controls.py`、`test_instrumental.py`、`test_adjust.py` 和 `test_versions.py`（纯音乐与变调测试使用 runtime 中的 FFmpeg，先设置 `SING_LOCAL_TEST`）；运行 `test_backend.py` 前设置 `SING_LOCAL_TEST` 为本机 runtime 目录。变调变速的真实推理验证：`dual-version/benchmark_adjust.py --runtime ... --output <Git 外目录> --validation dual-version/VALIDATION-v1.3.0.json`，可加 `--source <本机纯伴奏 WAV>`；全部通过后才会把该版本验证标记为通过，部署脚本以此为准。后者需要既有示例音频与模型文件来验证可用性，推理本身使用测试进程。真实推理验证另用 `benchmark_controls.py --runtime ... --installed-app ... --output ...`，结果目录须留在 Git 外。
 
 更新现有安装：先完成构建和验证，再使用 `dual-version/deploy-release.ps1 -AppRoot <现有 sing-studio 目录>`。脚本拒绝活动队列，备份应用代码和前端，保留用户数据，并启动原有本机入口。仅用于已安装应用，不创建或下载推理环境。
 
