@@ -6,8 +6,11 @@ from http.server import ThreadingHTTPServer
 import server
 import audio_adjust
 import voice_swap
+import kid_voice
+import dj_tools
 from generation_controls import RELEASE, VERSION, CONTROL_VERSION, DEFAULT_STRENGTH, LEGACY_INSTRUCTIONS, validate_controls, text_field, build_caption, effective_controls, output_name
-from generation_controls import MAX_VERSIONS, LETTERS, version_count, text_list, default_styles
+from generation_controls import MAX_VERSIONS, LEGACY_VERSIONS, LETTERS, version_count, text_list, default_styles
+from generation_controls import SUITE, SMART_FIELDS, apply_smart_defaults, validate_suite
 
 ROOT=Path(os.environ.get('SING_APP_ROOT',str(server.ROOT)))
 TEST=Path(os.environ.get('SING_LOCAL_TEST',str(ROOT.parent/'local-test')))
@@ -23,6 +26,12 @@ ACTIVE={}
 RUNNING=None
 PYTHON=TEST/'ace-env/Scripts/python.exe'
 FLAGS=getattr(subprocess,'CREATE_NO_WINDOW',0)
+# Up to 20 versions per song, each with 3 speed versions, fill a queue quickly.
+QUEUE_LIMIT=2000
+# Works made on this computer from finished works; they share the effects queue and never use YuE2.
+EFFECT_KINDS=('adjust','dj','mix','suite')
+# Singers whose character is the point; swapping them to the original singer's voice would undo it.
+OWN_VOICE_SINGERS=('kid','duet','choir')
 SAMPLE={'id':'sample','title':'Let’s Go Fishin’','duration':30,'source':str(TEST/'samples/fishin-30s.wav')}
 
 def read(path,default=None):
@@ -46,10 +55,14 @@ def stored_voice(value,inherit=False):
     except ValueError:return None if inherit else voice_swap.validate({})
 
 def versioned_track(t):
-    """Per-song version styles ('' follows the shared style); style / style_b stay their A and B entries."""
-    styles=t.get('styles') if isinstance(t.get('styles'),list) and len(t['styles'])==MAX_VERSIONS else ['']*MAX_VERSIONS
+    """Per-song version styles ('' follows the shared style); style / style_b stay their A and B entries.
+    Ten styles saved before v1.6.0 gain K–T following the shared styles."""
+    styles=t.get('styles')
+    if isinstance(styles,list) and len(styles)==LEGACY_VERSIONS:styles=styles+['']*(MAX_VERSIONS-LEGACY_VERSIONS)
+    if not (isinstance(styles,list) and len(styles)==MAX_VERSIONS):styles=['']*MAX_VERSIONS
     return {**t,'styles':[t.get('style',''),t.get('style_b',''),*styles[2:]],'version_count':t.get('version_count'),'voice_swap':stored_voice(t.get('voice_swap'),True),
-        'speed_variants':t.get('speed_variants') if isinstance(t.get('speed_variants'),bool) else None}
+        'speed_variants':t.get('speed_variants') if isinstance(t.get('speed_variants'),bool) else None,
+        'suite':t.get('suite') if isinstance(t.get('suite'),bool) else None}
 
 def public_track(t):return {k:v for k,v in versioned_track(t).items() if k!='source'}
 
@@ -59,8 +72,8 @@ def adjust_history(meta):
     return meta.get('adjust_history') or ([meta['adjust']] if meta.get('adjust') else [])
 
 def job_output_name(meta):
-    labels=[voice_swap.LABEL] if meta.get('voice') else []
-    changes=', '.join(filter(None,labels+[audio_adjust.label(a) for a in adjust_history(meta)]))
+    labels=([voice_swap.LABEL] if meta.get('voice') else [])+([kid_voice.LABEL] if meta.get('kid') else [])+([meta['suite_label']] if meta.get('suite_label') else [])
+    changes=', '.join(filter(None,labels+[audio_adjust.label(a) for a in adjust_history(meta)]+[dj_tools.label(e) for e in meta.get('dj_history',[])]))
     return output_name(meta.get('style',''),meta['title']+(f' ({changes})' if changes else ''))
 
 def result_file(directory,result,kind,suffixes=('.wav','.mp3')):
@@ -86,6 +99,8 @@ def public_job(directory):
         value['checks']=result.get('checks',{})
         value['notice']=result.get('notice','')
         if value.get('voice') and value.get('kind')!='adjust':value['voice_info']=voice_swap.summary(read(directory/'voice-swap.json'))
+        if value.get('kid') and not value.get('kind'):value['kid_info']=kid_voice.summary(read(directory/'kid-voice.json'))
+        if value.get('kind') in ('dj','mix','suite'):value['effect_info']=read(directory/f'{value["kind"]}.json',{})
     return value
 
 def jobs():return sorted(filter(None,(public_job(p) for p in JOBS.iterdir() if p.is_dir())),key=lambda x:x.get('queue_order',x['created_at']),reverse=True)
@@ -94,7 +109,8 @@ def settings():
     value = {**{'profile':'quality','style_b':'Jazz','gender':'auto','tone':'natural',
         'style':'R&B','mode':'remix','format':'both','instructions':'','paused':False,
         'instructions_a':'','instructions_b':'','change_strength':DEFAULT_STRENGTH,'melody_mode':'reference',
-        'adjust':dict(audio_adjust.DEFAULT),'version_count':2,'voice_swap':voice_swap.validate({}),'speed_variants':True},
+        'adjust':dict(audio_adjust.DEFAULT),'version_count':2,'voice_swap':voice_swap.validate({}),'speed_variants':True,
+        'smart_defaults':True,'suite':validate_suite({})},
         **read(DATA/'settings.json',{})}
     # Only migrate the exact old built-in text, never arbitrary user writing.
     if not value.get('controls_version') and value['instructions'] == LEGACY_INSTRUCTIONS:
@@ -102,9 +118,15 @@ def settings():
     value['controls_version'] = CONTROL_VERSION
     value['voice_swap'] = stored_voice(value['voice_swap'])
     if not isinstance(value.get('speed_variants'),bool):value['speed_variants']=True
+    if not isinstance(value.get('smart_defaults'),bool):value['smart_defaults']=True
+    try:value['suite']=validate_suite(value.get('suite'))
+    except ValueError:value['suite']=validate_suite({})
     styles=value.get('styles')
+    # Ten versions saved before v1.6.0 keep their styles; K–T start on unused presets.
+    if isinstance(styles,list) and len(styles)==LEGACY_VERSIONS and all(isinstance(s,str) for s in styles):styles=default_styles(*styles)
     if not (isinstance(styles,list) and len(styles)==MAX_VERSIONS):styles=default_styles(str(value['style']),str(value['style_b']))
     notes=value.get('version_instructions')
+    if isinstance(notes,list) and len(notes)==LEGACY_VERSIONS:notes=notes+['']*(MAX_VERSIONS-LEGACY_VERSIONS)
     if not (isinstance(notes,list) and len(notes)==MAX_VERSIONS):notes=['']*MAX_VERSIONS
     value['styles']=[value['style'],value['style_b'],*styles[2:]]
     value['version_instructions']=[value['instructions_a'],value['instructions_b'],*notes[2:]]
@@ -127,6 +149,10 @@ def prepare_job(payload):
     instructions=text_field(payload,'instructions')
     variant_instructions=text_field(payload,'variant_instructions')
     caption=build_caption(style,instructions,variant_instructions) if 'instructions' in payload or 'variant_instructions' in payload else text_field(payload,'caption',2000)
+    part=payload.get('suite_part')
+    if part is not None and (not isinstance(part,dict) or set(part)!={'id','part'} or not re.fullmatch('[0-9a-f]{32}',str(part['id'])) or part['part'] not in range(len(SUITE))):raise ValueError('管弦组曲设置无效。')
+    # Each suite part also asks for its own movement character (soft, fast, grand).
+    if part:caption+=', '+SUITE[part['part']]['hint']
     lyrics=str(payload.get('lyrics',t.get('lyrics',''))).strip()
     if not 1<=len(caption)<=2000 or len(lyrics)>20000:raise ValueError('请填写风格描述；歌词最多 20000 字。')
     fmt=payload.get('format','both')
@@ -137,8 +163,11 @@ def prepare_job(payload):
     if mode=='preserve' or instrumental:gender='auto';tone='natural'
     strength,melody=validate_controls(payload)
     if mode=='preserve':melody='reference'
-    # Voice swap replaces generated singing only; preserve keeps the recording, instrumental has none.
-    voice=None if mode=='preserve' or instrumental else voice_swap.validate_job(payload.get('voice'))
+    # Voice swap replaces generated singing only; preserve keeps the recording, instrumental has none,
+    # and a kid, duet or choir singer keeps the character that was asked for.
+    voice=None if mode=='preserve' or instrumental or gender in OWN_VOICE_SINGERS else voice_swap.validate_job(payload.get('voice'))
+    kid=gender=='kid'
+    smart=payload.get('smart_applied') or {}
     if voice and not voice_swap.available():raise ValueError(f'《{t["title"]}》要换成原唱音色，但本机还没有安装换声引擎（Seed-VC）。请先按说明安装，或关闭“换成原唱音色”。')
     adjust=audio_adjust.validate(payload.get('adjust') or audio_adjust.DEFAULT)
     adjust=adjust if audio_adjust.changes_anything(adjust) else None
@@ -149,17 +178,55 @@ def prepare_job(payload):
         duration=audio_adjust.output_seconds(source_duration,adjust)
         if not 5<=duration<=600:raise ValueError(f'《{t["title"]}》变速后为 {duration/60:.1f} 分钟，须在 5 秒至 10 分钟之间。')
     config={'profile':profile,'gender':gender,'tone':tone,'engine':'yue2','track_id':t['id'],'source':t['source'],'start':0,'duration':duration,'seed':seed,
-        'source_duration':source_duration,'adjust':adjust,'voice':voice,'speed_variants':speed_variants,
+        'source_duration':source_duration,'adjust':adjust,'voice':voice,'speed_variants':speed_variants,'kid':kid,'smart_defaults':smart,
         'mode':mode,'caption':caption,'lyrics':'' if instrumental else lyrics,'auto_lyrics':not instrumental,'instrumental':instrumental,'format':fmt,'style':style,
         'app_version':VERSION,'controls_version':CONTROL_VERSION,'change_strength':strength,'melody_mode':melody,
         'instructions':instructions,'variant_instructions':variant_instructions}
     config['effective_controls']=effective_controls(config)
     identifier=uuid.uuid4().hex
     meta={'id':identifier,'engine':'yue2','track_id':t['id'],'title':t['title'],'style':config['style'],'mode':mode,'adjust':adjust,'voice':voice,
-        'speed_variants':speed_variants,'duration':duration,'start':0,'state':'queued','created_at':time.time(),'attempt':0,'max_attempts':2}
+        'speed_variants':speed_variants,'kid':kid,'smart_defaults':smart,'duration':duration,'start':0,'state':'queued','created_at':time.time(),'attempt':0,'max_attempts':2}
+    if part:
+        suite={'suite_id':part['id'],'suite_part':part['part'],'suite_label':SUITE[part['part']]['label']}
+        config.update(suite);meta.update(suite)
     config['output_name']=meta['output_name']=job_output_name(meta)
     meta['config']={k:v for k,v in config.items() if k!='source'}
     return config,meta
+
+def expand_item(item):
+    """One song's jobs as (payload, pair id, version letter): its versions, then the three suite parts."""
+    variants=item.get('variants')
+    if variants is None:return [(item,None,None)]
+    if not isinstance(variants,list) or not 1<=len(variants)<=MAX_VERSIONS or not all(isinstance(v,dict) for v in variants):raise ValueError(f'每首歌曲需要 1–{MAX_VERSIONS} 个版本。')
+    names=[str(v.get('style','')).strip().casefold() for v in variants]
+    if len(set(names))!=len(names):raise ValueError('同一首歌的各版本请选择不同风格。')
+    smart=item.get('smart_defaults',False);explicit=item.get('explicit',[])
+    if not isinstance(smart,bool) or not isinstance(explicit,list) or not set(map(str,explicit))<=set(SMART_FIELDS):raise ValueError('智能默认设置无效。')
+    suite=item.get('suite')
+    if suite is not None:
+        suite=validate_suite({'enabled':True,'styles':suite.get('styles')} if isinstance(suite,dict) and set(suite)=={'styles'} else None)['styles']
+        if len(variants)+len(SUITE)>MAX_VERSIONS:raise ValueError(f'加上管弦组曲的 {len(SUITE)} 个版本后超过 {MAX_VERSIONS} 个，请减少这首歌的版本数。')
+    pair=uuid.uuid4().hex
+    base={k:v for k,v in item.items() if k not in ('variants','voice_swap','voice','smart_defaults','explicit','suite')}
+    seed=secrets.randbelow(2147483648-MAX_VERSIONS)
+    swap=voice_swap.validate(item.get('voice_swap') if item.get('voice_swap') is not None else {})
+    expanded=[]
+    for index,variant in enumerate(variants):
+        override={k:v for k,v in variant.items() if k in ('style','caption','gender','tone','variant_instructions','change_strength','melody_mode')}
+        job={**base,**override,'seed':seed+index,'voice':voice_swap.for_variant(swap,LETTERS[index])}
+        if smart:
+            job,applied=apply_smart_defaults(job,job.get('style',''),explicit)
+            job['smart_applied']=applied
+        expanded.append((job,pair,LETTERS[index]))
+    if suite:
+        identifier=uuid.uuid4().hex
+        # The parts share every setting and the reference melody, so the suite can switch between them
+        # on one time line; they get no speed versions or voice swap of their own.
+        for part,style in enumerate(suite):
+            index=len(variants)+part
+            expanded.append(({**base,'style':style,'melody_mode':'reference','seed':seed+index,'voice':None,'speed_variants':False,
+                'suite_part':{'id':identifier,'part':part}},pair,LETTERS[index]))
+    return expanded
 
 def create_batch(payload):
     items=payload.get('items')
@@ -174,19 +241,10 @@ def create_batch(payload):
             return {'jobs':[public_job(JOBS/i) for i in existing['ids']]}
         expanded=[]
         for item in items:
-            variants=item.get('variants')
-            if variants is None:expanded.append((item,None,None));continue
-            if not isinstance(variants,list) or not 1<=len(variants)<=MAX_VERSIONS or not all(isinstance(v,dict) for v in variants):raise ValueError(f'每首歌曲需要 1–{MAX_VERSIONS} 个版本。')
-            names=[str(v.get('style','')).strip().casefold() for v in variants]
-            if len(set(names))!=len(names):raise ValueError('同一首歌的各版本请选择不同风格。')
-            pair=uuid.uuid4().hex
-            base={k:v for k,v in item.items() if k not in ('variants','voice_swap','voice')}
-            seed=secrets.randbelow(2147483648-MAX_VERSIONS)
-            swap=voice_swap.validate(item.get('voice_swap') if item.get('voice_swap') is not None else {})
-            for index,variant in enumerate(variants):
-                override={k:v for k,v in variant.items() if k in ('style','caption','gender','tone','variant_instructions','change_strength','melody_mode')}
-                expanded.append(({**base,**override,'seed':seed+index,'voice':voice_swap.for_variant(swap,LETTERS[index])},pair,LETTERS[index]))
-        if sum(j['state'] in ('queued','running') for j in jobs())+len(expanded)>500:raise ValueError('队列最多容纳 500 首，请等部分任务完成。')
+            if not isinstance(item,dict):raise ValueError('批次内容无效。')
+            # Smart-default records and suite parts are only ever set here, never taken from a request.
+            expanded+=expand_item({k:v for k,v in item.items() if k not in ('smart_applied','suite_part')})
+        if sum(j['state'] in ('queued','running') for j in jobs())+len(expanded)>QUEUE_LIMIT:raise ValueError(f'队列最多容纳 {QUEUE_LIMIT} 首，请等部分任务完成。')
         # Validate the whole batch before creating any visible job.
         prepared=[];first={}
         for item,pair,variant in expanded:
@@ -194,8 +252,11 @@ def create_batch(payload):
             if pair:
                 config.update(pair_id=pair,variant=variant)
                 meta.update(pair_id=pair,variant=variant)
-                if pair in first:config['reuse_from']=first[pair]
-                else:first[pair]=meta['id']
+                # Smart defaults can give versions their own mode or key/tempo; analysis is only reused
+                # from the first version with the same source settings.
+                same=(pair,config['mode'],json.dumps(config['adjust'],sort_keys=True))
+                if same in first:config['reuse_from']=first[same]
+                else:first[same]=meta['id']
                 meta['config']={k:v for k,v in config.items() if k!='source'}
             prepared.append((config,meta))
         last_order=max([time.time()]+[j.get('queue_order',j['created_at']) for j in jobs()])
@@ -224,39 +285,100 @@ def create_adjustment(identifier,payload):
     EFFECTS_WAKE.set()
     return public_job(target)
 
+def finished_work(identifier,purpose):
+    """(job, its WAV, seconds) of a completed work that a derived work may read."""
+    if not isinstance(identifier,str) or not re.fullmatch('[0-9a-f]{32}',identifier):raise ValueError('任务不存在。')
+    directory=JOBS/identifier;parent=read(directory/'job.json')
+    if not parent or parent.get('state')!='completed':raise ValueError(f'完成的作品才能{purpose}。')
+    result=read(directory/'result.json',{})
+    source=result_file(directory,result,'result',('.wav',))
+    if source is None or not source.is_file():raise ValueError('找不到这首作品的 WAV 音频。')
+    return parent,source,float(result.get('checks',{}).get('result',{}).get('seconds') or parent['duration'])
+
+def queue_room(count=1):
+    if sum(j['state'] in ('queued','running') for j in jobs())+count>QUEUE_LIMIT:raise ValueError(f'队列最多容纳 {QUEUE_LIMIT} 首，请等部分任务完成。')
+
+def queue_derived(kind,parent,duration,inputs,**fields):
+    """One queued effects job made from finished work (call with LOCK held); returns its directory.
+    The name keeps the parent's labels: original voice, kid voice, suite part, key/tempo and DJ edits."""
+    parent_config=parent.get('config',{})
+    meta={'id':uuid.uuid4().hex,'kind':kind,'engine':'effects','parent_id':parent['id'],
+        'group_id':parent.get('group_id') or parent.get('pair_id') or parent['id'],
+        'track_id':parent.get('track_id'),'title':parent['title'],'style':parent.get('style',''),'variant':parent.get('variant'),
+        'mode':parent.get('mode','remix'),'adjust_history':adjust_history(parent),'dj_history':parent.get('dj_history',[]),'voice':parent.get('voice'),
+        'kid':bool(parent.get('kid')),'suite_label':parent.get('suite_label'),
+        'duration':duration,'start':0,'state':'queued','created_at':time.time(),'attempt':0,'max_attempts':2,
+        'queue_order':max([time.time()]+[j.get('queue_order',j['created_at']) for j in jobs()])+.001,**fields}
+    meta['output_name']=job_output_name(meta)
+    config={'kind':kind,'engine':'effects','duration':duration,'parent_id':meta['parent_id'],'output_name':meta['output_name'],
+        'format':parent_config.get('format','both'),'mode':meta['mode'],'instrumental':bool(parent_config.get('instrumental')),
+        'style':meta['style'],'app_version':VERSION,**inputs}
+    meta['config']={k:v for k,v in config.items() if k not in ('source','sources')}
+    target=JOBS/meta['id'];target.mkdir()
+    save(target/'config.json',config);save(target/'job.json',meta)
+    return target
+
 def queue_adjustment(identifier,adjust,auto=False):
     """One queued key/tempo job on a completed work (call with LOCK held); returns its directory."""
-    if True:
-        directory=JOBS/identifier;parent=read(directory/'job.json')
-        if not parent or parent.get('state')!='completed':raise ValueError('完成的作品才能变调变速。')
-        result=read(directory/'result.json',{})
-        source=result_file(directory,result,'result',('.wav',))
-        if source is None or not source.is_file():raise ValueError('找不到这首作品的 WAV 音频。')
-        seconds=float(result.get('checks',{}).get('result',{}).get('seconds') or parent['duration'])
-        duration=audio_adjust.output_seconds(seconds,adjust)
-        if not 5<=duration<=1200:raise ValueError(f'变速后为 {duration/60:.1f} 分钟，须在 5 秒至 20 分钟之间。')
-        if sum(j['state'] in ('queued','running') for j in jobs())>=500:raise ValueError('队列最多容纳 500 首，请等部分任务完成。')
-        parent_config=parent.get('config',{})
-        meta={'id':uuid.uuid4().hex,'kind':'adjust','engine':'effects','parent_id':identifier,'auto':auto,
-            'group_id':parent.get('group_id') or parent.get('pair_id') or identifier,
-            'track_id':parent.get('track_id'),'title':parent['title'],'style':parent.get('style',''),'variant':parent.get('variant'),
-            'mode':parent.get('mode','remix'),'adjust':adjust,'adjust_history':adjust_history(parent)+[adjust],'voice':parent.get('voice'),
-            'duration':duration,'start':0,'state':'queued','created_at':time.time(),'attempt':0,'max_attempts':2,
-            'queue_order':max([time.time()]+[j.get('queue_order',j['created_at']) for j in jobs()])+.001}
-        meta['output_name']=job_output_name(meta)
-        config={'kind':'adjust','engine':'effects','source':str(source),'source_duration':seconds,'duration':duration,
-            'adjust':adjust,'adjust_history':meta['adjust_history'],'parent_id':identifier,'output_name':meta['output_name'],
-            'format':parent_config.get('format','both'),'mode':meta['mode'],'instrumental':bool(parent_config.get('instrumental')),
-            'style':meta['style'],'app_version':VERSION}
-        meta['config']={k:v for k,v in config.items() if k!='source'}
-        target=JOBS/meta['id'];target.mkdir()
-        save(target/'config.json',config);save(target/'job.json',meta)
-    return target
+    parent,source,seconds=finished_work(identifier,'变调变速')
+    duration=audio_adjust.output_seconds(seconds,adjust)
+    if not 5<=duration<=1200:raise ValueError(f'变速后为 {duration/60:.1f} 分钟，须在 5 秒至 20 分钟之间。')
+    queue_room()
+    history=adjust_history(parent)+[adjust]
+    return queue_derived('adjust',parent,duration,{'source':str(source),'source_duration':seconds,'adjust':adjust,'adjust_history':history},
+        auto=auto,adjust=adjust,adjust_history=history)
+
+def create_dj(identifier,payload):
+    """Queue a DJ edit of a finished work (build-up & drop, filter intro, echo-out); the original stays untouched."""
+    effects=dj_tools.validate(payload.get('effects'))
+    with LOCK:
+        parent,source,seconds=finished_work(identifier,'添加 DJ 效果')
+        queue_room()
+        target=queue_derived('dj',parent,seconds,{'source':str(source),'source_duration':seconds,'effects':effects},
+            dj=effects,dj_history=parent.get('dj_history',[])+[effects])
+    EFFECTS_WAKE.set()
+    return public_job(target)
+
+def create_mix(payload):
+    """Queue one non-stop DJ mix of 2–20 finished works, in the given or an automatic order."""
+    ids,order,beats,name=dj_tools.validate_mix(payload)
+    with LOCK:
+        works=[finished_work(identifier,'做成 DJ 串烧') for identifier in ids]
+        total=sum(seconds for _,_,seconds in works)
+        if total>dj_tools.MAX_MIX_SECONDS:raise ValueError(f'所选作品共 {total/60:.0f} 分钟，DJ 串烧最多 {dj_tools.MAX_MIX_SECONDS//60} 分钟。')
+        queue_room()
+        first=works[0][0]
+        parent={'id':first['id'],'title':name or f'{len(ids)} 首串烧','style':'DJ Mix','group_id':uuid.uuid4().hex,'config':first.get('config',{})}
+        sources=[{'id':job['id'],'path':str(source),'title':job_output_name(job),'seconds':seconds} for job,source,seconds in works]
+        target=queue_derived('mix',parent,max(5.,total-(len(ids)-1)*beats*.5),{'sources':sources,'order':order,'transition_beats':beats},
+            parent_ids=ids,order=order,transition_beats=beats,variant=None,track_id=None,adjust_history=[],dj_history=[],voice=None,kid=False,suite_label=None)
+    EFFECTS_WAKE.set()
+    return public_job(target)
+
+def queue_suite(meta):
+    """When the last of a song's three suite parts completes, queue its orchestral suite once (LOCK held).
+    Problems are recorded on that part, never raised into the worker."""
+    suite=meta.get('suite_id')
+    if not suite or meta.get('kind'):return
+    marker=DATA/'suites'/f'{suite}.json'
+    if marker.exists():return
+    parts=sorted((j for j in jobs() if j.get('suite_id')==suite and not j.get('kind')),key=lambda j:j.get('suite_part',0))
+    if len(parts)!=len(SUITE) or any(j['state']!='completed' for j in parts):return
+    try:
+        works=[finished_work(j['id'],'组成管弦组曲') for j in parts]
+        queue_room()
+        target=queue_derived('suite',works[0][0],max(seconds for _,_,seconds in works),
+            {'sources':[{'id':job['id'],'path':str(source),'style':job.get('style','')} for job,source,_ in works]},
+            style='Orchestral Suite',parent_ids=[j['id'] for j in parts],suite_styles=[j.get('style','') for j in parts],suite_label=None,variant=None)
+    except (ValueError,OSError) as error:
+        meta['suite_error']=str(error);return
+    marker.parent.mkdir(exist_ok=True);save(marker,{'job':target.name,'parts':[j['id'] for j in parts]})
+    EFFECTS_WAKE.set()
 
 def queue_speed_variants(meta):
     """After a generated version completes, queue its Speed Up / Slowed / Super Slowed versions once.
     The parent must already be saved as completed. Problems are recorded, never raised into the worker."""
-    if meta.get('kind')=='adjust' or not meta.get('speed_variants') or 'speed_variant_ids' in meta:return
+    if meta.get('kind') in EFFECT_KINDS or not meta.get('speed_variants') or 'speed_variant_ids' in meta:return
     created=[];errors=[]
     for name in audio_adjust.PRESETS:
         try:created.append(queue_adjustment(meta['id'],audio_adjust.preset(name),auto=True).name)
@@ -277,7 +399,7 @@ def close_clock(meta, end=None):
     if start:meta['processing_seconds']=meta.get('processing_seconds',0)+max(0,(end if end is not None else time.time())-start)
 
 def change_jobs(identifiers, action):
-    if not isinstance(identifiers,list) or not 1<=len(identifiers)<=500:raise ValueError('请选择任务。')
+    if not isinstance(identifiers,list) or not 1<=len(identifiers)<=QUEUE_LIMIT:raise ValueError('请选择任务。')
     with LOCK:
         for identifier in identifiers:
             if not isinstance(identifier,str) or not re.fullmatch('[0-9a-f]{32}',identifier) or not read(JOBS/identifier/'job.json'):raise ValueError('任务不存在。')
@@ -300,7 +422,7 @@ def finish_attempt(directory,code):
     succeeded=code==0 and (directory/'result.json').exists()
     if succeeded:
         meta.update(state='completed',finished_at=time.time());meta.pop('error',None)
-        save(directory/'job.json',meta);queue_speed_variants(meta)
+        save(directory/'job.json',meta);queue_speed_variants(meta);queue_suite(meta)
     else:
         error=read(directory/'error.json',{}).get('error','本地引擎退出，未返回完整作品。')
         meta.setdefault('errors',[]).append({'attempt':meta.get('attempt',1),'time':time.time(),'detail':error[-4000:]})
@@ -311,10 +433,11 @@ def finish_attempt(directory,code):
     save(directory/'job.json',meta)
     return meta
 
-def pending_jobs(kind):return [j for j in jobs() if j['state']=='queued' and (j.get('kind')=='adjust')==(kind=='adjust')]
+def pending_jobs(kind):return [j for j in jobs() if j['state']=='queued' and (j.get('kind') in EFFECT_KINDS)==(kind=='adjust')]
 
 def worker(kind='generate'):
-    """One serialized queue per kind: YuE2 generation, or key/tempo jobs on finished works."""
+    """One serialized queue per kind: YuE2 generation, or effects made from finished works
+    (key/tempo, DJ edits, non-stop mixes, orchestral suites)."""
     global RUNNING
     effects=kind=='adjust';wake=EFFECTS_WAKE if effects else WAKE
     while True:
@@ -457,13 +580,14 @@ class Handler(server.Handler):
             if route=='/api/settings':
                 with LOCK:
                     current=settings()
-                    for key in ('style','style_b','mode','format','instructions','paused','profile','gender','tone','instructions_a','instructions_b','change_strength','melody_mode','version_count','speed_variants'):
+                    for key in ('style','style_b','mode','format','instructions','paused','profile','gender','tone','instructions_a','instructions_b','change_strength','melody_mode','version_count','speed_variants','smart_defaults'):
                         if key in payload:current[key]=payload[key]
                     if 'adjust' in payload:current['adjust']=audio_adjust.validate(payload['adjust'])
                     if 'voice_swap' in payload:current['voice_swap']=voice_swap.validate(payload['voice_swap'])
+                    if 'suite' in payload:current['suite']=validate_suite(payload['suite'])
                     version_count(current['version_count'])
                     if 'styles' in payload:
-                        current['styles']=text_list(payload['styles'],40,allow_empty=False,message='每个版本都需要 1–40 字的风格名称。')
+                        current['styles']=text_list(payload['styles'],40,allow_empty=False,message='每个版本都需要 1–40 字的风格名称。',pad=lambda v:default_styles(*v))
                         current['style'],current['style_b']=current['styles'][:2]
                     if 'version_instructions' in payload:
                         current['version_instructions']=text_list(payload['version_instructions'],900,allow_empty=True,message='各版本补充要求须为不超过 900 字的文字。')
@@ -472,7 +596,7 @@ class Handler(server.Handler):
                     current['version_instructions'][:2]=[current['instructions_a'],current['instructions_b']]
                     text_list(current['styles'],40,allow_empty=False,message='每个版本都需要 1–40 字的风格名称。')
                     text_list(current['version_instructions'],900,allow_empty=True,message='各版本补充要求须为不超过 900 字的文字。')
-                    if current['mode'] not in ('remix','preserve') or current['format'] not in ('both','wav','mp3') or not isinstance(current['paused'],bool) or not isinstance(current['speed_variants'],bool):raise ValueError('设置无效。')
+                    if current['mode'] not in ('remix','preserve') or current['format'] not in ('both','wav','mp3') or not isinstance(current['paused'],bool) or not isinstance(current['speed_variants'],bool) or not isinstance(current['smart_defaults'],bool):raise ValueError('设置无效。')
                     if not 1<=len(str(current['style']))<=40 or len(str(current['instructions']))>900:raise ValueError('风格名称或描述太长。')
                     from yue2_engine import PROFILES,GENDERS,TONES
                     if current['profile'] not in PROFILES or current['gender'] not in GENDERS or current['tone'] not in TONES or not 1<=len(str(current['style_b']))<=40:raise ValueError('速度或声音设置无效。')
@@ -484,9 +608,10 @@ class Handler(server.Handler):
             if match:
                 with LOCK:
                     value=track(match[1])
-                    for key in ('lyrics','style','style_b','mode','hidden','gender','tone','change_strength','melody_mode','instructions','instrumental','version_count','speed_variants'):
+                    for key in ('lyrics','style','style_b','mode','hidden','gender','tone','change_strength','melody_mode','instructions','instrumental','version_count','speed_variants','suite'):
                         if key in payload:value[key]=payload[key]
                     if not isinstance(value.get('speed_variants'),(bool,type(None))):raise ValueError('变速版本设置无效。')
+                    validate_suite(value.get('suite'),inherit=True)
                     if 'adjust' in payload:value['adjust']=audio_adjust.validate(payload['adjust'],inherit=True)
                     if 'voice_swap' in payload:value['voice_swap']=voice_swap.validate(payload['voice_swap'],inherit=True)
                     version_count(value.get('version_count'),inherit=True)
@@ -504,12 +629,14 @@ class Handler(server.Handler):
                 self.json(public_track(value));return
             if route=='/api/batch':self.json(create_batch(payload),201);return
             if route=='/api/jobs':self.json(create_job(payload),201);return
+            if route=='/api/mix':self.json(create_mix(payload),201);return
             if route=='/api/queue/remove':self.json({'jobs':change_jobs(payload.get('ids'),'remove')});return
-            match=re.fullmatch(r'/api/jobs/([0-9a-f]{32})/(cancel|retry|remove|restore|favorite|adjust)',route)
+            match=re.fullmatch(r'/api/jobs/([0-9a-f]{32})/(cancel|retry|remove|restore|favorite|adjust|dj)',route)
             if match:
                 if match[2] in ('remove','restore','favorite'):self.json(change_jobs([match[1]],match[2])[0]);return
                 if match[2]=='cancel':self.json(cancel(match[1]));return
                 if match[2]=='adjust':self.json(create_adjustment(match[1],payload),201);return
+                if match[2]=='dj':self.json(create_dj(match[1],payload),201);return
                 with LOCK:
                     directory=JOBS/match[1];meta=read(directory/'job.json')
                     if not meta or meta['state'] not in ('failed','cancelled'):raise ValueError('此任务无需重试。')

@@ -1,0 +1,75 @@
+{
+  "version": "1.6.0",
+  "real_local_inference": false,
+  "subjective_listening_verified": false,
+  "passed": false,
+  "dev_checks_passed": true,
+  "required_benchmarks": [
+    "adjust",
+    "voice",
+    "variety"
+  ],
+  "dev_environment": "Development PC (Xeon + GTX 1070) without YuE2 or Seed-VC: stand-in runtime with FFmpeg 8.1.1 (with Rubber Band), Python 3.11, numpy/scipy/soundfile/librosa 0.11 and placeholder YuE2 files; a stand-in Seed-VC inference.py with the pinned interface runs under the real seedvc_runner.py.",
+  "catalog": {
+    "styles": 51,
+    "groups": ["classic", "asian-dj", "edm", "rap", "orchestra", "asian", "band", "world", "chill"],
+    "singers": ["auto", "male", "female", "kid", "duet", "choir", "opera"],
+    "smart_defaults": {
+      "asian-dj": "mode preserve, tempo 105-120%",
+      "rap (Hip-hop, Trap, Boom Bap)": "mode remix, melody free",
+      "kid singer": "+2 semitones"
+    },
+    "max_versions": 20,
+    "queue_limit": 2000
+  },
+  "frontend_build": true,
+  "packaging_tests": 4,
+  "backend_regressions": 8,
+  "control_regressions": 6,
+  "instrumental_regressions": 6,
+  "adjust_regressions": 8,
+  "versions_regressions": 5,
+  "voice_regressions": 9,
+  "speed_variant_regressions": 7,
+  "style_regressions": 7,
+  "kid_voice_regressions": 4,
+  "dj_regressions": 6,
+  "suite_regressions": 4,
+  "regressions_total": 70,
+  "test_environment_note": "On a Chinese-locale Windows console, run the tests with PYTHONUTF8=1; otherwise test_voice.py's self-test reads the runner's Chinese stderr as GBK and errors (an environment issue that predates v1.6.0).",
+  "checks": [
+    "Catalog: every one of 51 styles sits in exactly one group, has tags and a Chinese label, reaches build_caption / build_request (any letter case), and explicit requirements still replace the preset instrumentation; 20 distinct defaults keep v1.5.0's first ten.",
+    "Smart defaults: style mode / melody replace the shared choice, tempo / key fill only unchanged values (not linked speed), explicit per-song fields are never touched, kid +2 only where someone new sings, preserve keeps the reference melody; recorded per job; invalid switches or explicit lists reject the batch; forged smart_applied / suite_part in requests are stripped.",
+    "20 versions: settings, tracks and batches accept 1-20 (A-T); 10-entry lists saved by v1.5.0 (styles, notes, voice switches) are padded on read and on save; analysis is reused only between versions with the same mode and key/tempo.",
+    "Singers: kid, duet, choir and opera reach the request; kid, duet and choir drop voice swap; preserve and instrumental force the automatic singer, so the original recording is never changed.",
+    "Kid voice: octave plan from the median pitch; formants move while pYIN pitch stays (spectral warp), a low take moves one octave with Rubber Band or resampling and ends with +5 semitones of formant; remix keeps level and length; silent vocals are left untouched; pipeline order generate -> separate-generated -> kid -> validate; the notice is added to result.json.",
+    "DJ edits on synthetic beat tracks: filter intro muffles only the first 16 beats; the drop lands on the energy jump with half a beat of silence before it and leaves the rest bit-identical (after gain); echo-out cuts on a beat 8 beats before the end and rings 8 beats; the source WAV is never changed.",
+    "Non-stop mix with the real FFmpeg: tempos 120 / 126 / 62 fold to one mix tempo, every song beat-matched and loudness-evened, transitions exactly the chosen beats, output length = songs + transitions, no clipping; auto order follows tempo and Camelot distance; Krumhansl key finds C major / A minor.",
+    "Suite: onset-envelope alignment finds a 150-200 ms lag (and prefers the smallest shift among repeating beats), switch points land on the quiet moments near each third, the three parts play in turn at full length.",
+    "Service: DJ / mix / suite jobs run in the effects queue, carry names with all parent labels, expose their reports, never spawn speed versions, honour the queue limit and the 60-minute mix limit; the suite is queued exactly once when the third part completes, also after a restart."
+  ],
+  "browser_verified": [
+    "Stand-in install refreshed to v1.6.0; the interface connects and reports v1.6.0; no console errors",
+    "Version count offers 1-20 (A-T); 'fill by style group' (Asian DJ) set A-T to 20 distinct styles and the server saved them; v1.5.0's stored 10-entry settings were padded",
+    "Grouped style dropdowns show Chinese labels; smart-default hints under each version (e.g. Vinahouse: keep original singer, tempo 115%)",
+    "Singer 'kid' shows its note and the voice-swap badge '童声不换声'; suite switch, its three part pickers and the per-song suite select work; footer and confirmation dialog count 2 versions + 3 suite parts + 1 suite",
+    "Confirmed batch: A/B (Manyao / Vinahouse) queued as keep-original-singer with tempo 105% / 115% and their smart defaults; C-E queued as kid-voice suite parts (reference melody, no speed versions, no voice swap) with D and E reusing C's analysis; test jobs removed afterwards",
+    "DJ effects dialog: three effects tick with real clicks, the name preview matches the server name; the DJ edit job rendered through the engine to a 29.7 s work",
+    "DJ mix: picking works on cards with order numbers and a sticky bar, the dialog reorders, sets 8 beats and a Chinese name; the mix job rendered through the engine (79.4 s) and shows in its own group with order and tempo in the details",
+    "375 px wide: no horizontal scroll on the studio page"
+  ],
+  "pending": [
+    "Run seedvc-download.ps1 on the internet PC and seedvc-install.ps1 on the RTX 5070 PC; the GPU self-test must pass",
+    "Run benchmark_adjust.py on the RTX 5070 PC with real YuE2 and --validation dual-version/VALIDATION-v1.6.0.json",
+    "Run benchmark_voice.py on the RTX 5070 PC with a local song that has vocals and --validation dual-version/VALIDATION-v1.6.0.json",
+    "Run benchmark_variety.py on the RTX 5070 PC with a local song and --validation dual-version/VALIDATION-v1.6.0.json",
+    "Subjective listening: the new styles, the kid / duet / choir / opera singers and the kid voice step, smart-default DJ versions, a suite, DJ edits and a non-stop mix of real songs"
+  ],
+  "validation_limitations": [
+    "No real YuE2, UVR or Seed-VC inference was possible on the development PC; styles and singers are checked as request text only, the kid voice, DJ tools and suite on synthetic audio.",
+    "Whether YuE2 follows the new style, singer (child, duet, choir, opera) and rap requests is not known until listening on the app PC.",
+    "Beat and key detection use librosa on whole songs; songs with weak or changing beats may get imprecise drops, echoes, mix transitions or suite alignment.",
+    "Rubber Band's own formant keeping is not used: measured with FFmpeg 8.1.1 it holds only partly going up and not at all going down."
+  ],
+  "local_artifacts_excluded_from_git": true
+}

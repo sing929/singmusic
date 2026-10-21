@@ -43,6 +43,16 @@
 !/dual-version/VALIDATION-v1.4.0.json
 !/dual-version/test_speed_variants.py
 !/dual-version/VALIDATION-v1.5.0.json
+!/dual-version/styles.json
+!/dual-version/kid_voice.py
+!/dual-version/dj_tools.py
+!/dual-version/suite.py
+!/dual-version/test_styles.py
+!/dual-version/test_kid_voice.py
+!/dual-version/test_dj.py
+!/dual-version/test_suite.py
+!/dual-version/benchmark_variety.py
+!/dual-version/VALIDATION-v1.6.0.json
 !/sing-studio-batch-preview/
 /sing-studio-batch-preview/*
 !/sing-studio-batch-preview/src/

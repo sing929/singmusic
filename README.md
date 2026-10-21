@@ -1,13 +1,37 @@
-# Sing Studio · v1.4.0
+# Sing Studio · v1.6.0
 
-本机 YuE2 整首音乐改编工作室。批量导入音频、可选歌词、A/B 完整版本、原唱保留、收藏和可恢复移除。音频、歌词及推理留在电脑上。
+本机 YuE2 整首音乐改编工作室。批量导入音频、可选歌词、每首 1–20 个完整版本、原唱保留、收藏和可恢复移除。音频、歌词及推理留在电脑上。
 
-这次更新加入“加速与慢速版本”：每个版本生成完成后，自动在本机另存 Speed Up、Slowed、Super Slowed 三个变速版本，每首 10 个版本一次可得 40 个作品。上一版加入的“换成原唱音色”、每首 1–10 个版本，以及变调与变速（含 Slowed / Sped up 与可选混响）继续可用。
+这次更新加入更多音乐变化：51 种风格分为 9 组（亚洲 DJ 版、电子舞曲、说唱、管弦与古典、亚洲流行、乐队、世界与拉丁、轻松与趣味等），新的演唱者（童声、男女对唱、合唱团、歌剧），风格智能默认，每首最多 20 个版本，管弦组曲，以及对已完成作品的 DJ 效果与 DJ 串烧。之前的加速与慢速版本、换成原唱音色、变调与变速（含 Slowed / Sped up 与可选混响）继续可用。
+
+## 更多风格与智能默认
+
+- **51 种风格、9 组**：经典（R&B、Lo-fi、Jazz、Acoustic、Soul、Funk）；亚洲 DJ 版（慢摇 Manyao、Vinahouse、Funkot、Jungle Dutch、Melbourne Bounce、抖音 DJ）；电子舞曲 EDM（Remix、House、Big Room、Future Bass、Trance、Dubstep、Drum & Bass、Techno、Hardstyle、Hardtekk）；说唱（Hip-hop、Trap、Boom Bap、Phonk）；管弦与古典（Cinematic Orchestra、Classical Piano、String Quartet、Baroque、Waltz、Classic Oldies）；亚洲流行（中国风、K-pop、J-pop、Malay Pop、Dangdut）；乐队（Rock、Metal、Pop-punk、Country、Blues）；世界与拉丁（Reggae、Reggaeton、Bossa Nova、Afrobeats）；轻松与趣味（Ambient、8-bit、Gospel、A Cappella、Music Box）。
+- **选择**：每个版本用分组下拉菜单选择风格，仍可自定义。“按风格组填充”把版本 A 起依次换成同一组里的不同风格，组内不够时接着用其他组；也可随机挑选不同风格。风格目录 `dual-version/styles.json` 由界面和后端共用，每种风格有自己的编曲描述发给 YuE2。
+- **风格智能默认**（默认开启）：亚洲 DJ 版保留原唱并加快 5–20%（慢摇 105%、Vinahouse 115%、Funkot 120%，其余 110%），像常见的 DJ 版；说唱（Hip-hop、Trap、Boom Bap）用自由重创，用原歌词说唱而不是照原旋律唱；童声升 2 个半音。规则：智能默认会替换统一设置里的改编模式与旋律约束；速度与变调只在你没有改动时才填入；逐首“单独调整”里设置的项目不会被改动。版本卡片下方显示每种风格的智能默认，作品与队列也会注明。关闭后风格只改变编曲。
+
+## 新演唱者与童声
+
+- 演唱者可选自动、男声、女声、童声、男女对唱、合唱团、歌剧，统一或逐首设置，发给 YuE2 作为演唱要求（与音色选择一起使用）。男女对唱由模型安排分句，不能指定哪一句由谁唱。
+- **童声**：生成时要求童声演唱；完成后用 UVR 分离新歌声，在本机变成童声——新歌声的中位音高低于 A3（男声音域）时整体升高八度（本机 FFmpeg 含 Rubber Band 时用它，否则用重采样），再用频谱包络把共振峰调到比原来的歌声高 3 个半音（女声音域）或 5 个半音（男声音域），旋律与歌词不变，再与新伴奏重新混音。作品名附 `Kid Voice`，任务目录保留处理前的 `generated.wav`。
+- 童声、男女对唱与合唱团不换成原唱音色（它们本身就是要的声音）；歌剧与男声、女声仍可换声。保留原唱与纯音乐不使用演唱者设置，原录音的人声不会被改动。
+
+## 管弦组曲
+
+- 统一设置的“管弦组曲”面板开启后，每首歌另外生成三个管弦版本：Suite I 柔和（默认 String Quartet）、Suite II 轻快（默认 Baroque）、Suite III 宏大（默认 Cinematic Orchestra），可改成任何风格或自定义；逐首“单独调整”可跟随统一或单独开关。
+- 三个部分都参考原曲旋律、使用这首歌的同一套设置（不用风格智能默认、不换声、不生成变速版本），显示为这首歌的额外版本（名称附 Suite I / II / III）。三个都完成后自动另存一首“Orchestral Suite”：在每三分之一附近三个版本一起最安静的位置转换，转换前对齐节拍（最多 0.5 秒），用 2 秒等功率交叉淡化衔接，长度与原曲相同。
+- 加上组曲后每首最多 20 个版本（例如 17 个版本 + 3 个组曲部分）。
+
+## DJ 效果与 DJ 串烧
+
+- **DJ 效果**：在“我的作品”点“DJ 效果”，可选 Build-up 与 Drop（在能量跳升最大的段落前 8 拍：低音逐渐抽空、噪声上升、军鼓越滚越密，静音半拍后整首落下）、滤波渐入（开头 16 拍从低通闷声逐渐打开）、回声结尾（结尾前 8 拍停在拍点上，最后一拍用附点八分音符回声消失）。按本机检测到的节拍处理，另存为新作品，名称附如 `DJ Drop + Echo Out`；回声结尾会让作品略短或略长。
+- **DJ 串烧**：在“我的作品”点“DJ 串烧”，勾选 2–20 首作品（总长最多 60 分钟），在对话框里调整顺序或让 App 按速度与调性自动排序（从最慢的一首开始，每次接速度与 Camelot 调性最接近的一首），选择过渡 8 / 16 / 32 拍并可命名。每首先调到统一速度（音高不变，速度差约 16% 以上的不强行对齐）、音量拉平，相邻两首从拍点开始交叉淡化并在中点交换低音，混成一首不间断的作品，单独成组显示。
+- 两者都在本机效果队列处理，不重新生成、不占用显卡，原作品不变；也不再派生变速版本。
 
 ## 使用换成原唱音色
 
 - **作用**：YuE2 生成新版本后，先用 UVR 分离新歌声与新伴奏，再用本机 Seed-VC 把新歌声换成原曲演唱者的音色，最后重新混音。旋律、歌词、节奏来自新的演唱，只换音色。目标音色取自你导入的原曲（UVR 分离出的原唱），不需要另外录音或训练。
-- **设置**：统一设置的“换成原唱音色”面板里按版本（A–J，数量随“每首版本数量”）分别勾选；逐首“单独调整”里可跟随统一或单独设置这首歌。**音域**默认“自动匹配原唱音域”：新歌声与原唱相差较大时整八度移动（例如女声旋律换成男声原唱时降八度），调性不变；也可固定保持、升八度或降八度。
+- **设置**：统一设置的“换成原唱音色”面板里按版本（A–T，数量随“每首版本数量”）分别勾选；逐首“单独调整”里可跟随统一或单独设置这首歌。演唱者为童声、男女对唱或合唱团时不换声。**音域**默认“自动匹配原唱音域”：新歌声与原唱相差较大时整八度移动（例如女声旋律换成男声原唱时降八度），调性不变；也可固定保持、升八度或降八度。
 - **范围**：只对“全新演绎”的有演唱歌曲生效；保留原唱已经使用原录音、纯音乐没有歌声，均不换声。原曲变调变速时，目标音色取自未调整的原唱。只在生成前设置，已完成作品不提供换声再处理。
 - **名称与信息**：作品名附 `Original Voice`，例如 `Lo-fi Justin Bieber - Baby (Original Voice)`。作品卡片与“参数与歌词”显示八度、乐句数、Seed-VC 步数，以及换声前后与原唱的音色相似度（客观参考，不等于听感）。任务目录保留换声前的 `generated.wav` 以便对比。
 - **时间**：每个换声版本另加一次 UVR 分离和换声（首次另需原曲分离），处理时间会增加；应用电脑上的实际用时由 `benchmark_voice.py` 记录，尚未实测。生成偏好“速度优先 / 均衡 / 质量优先”对应 Seed-VC 15 / 30 / 50 步。
@@ -16,14 +40,14 @@
 
 ## 每首多个版本
 
-- 在统一设置的“每首版本数量”选择 1–10 个，每个版本（A–J）选择一个目标风格；同一首歌的各版本须为不同风格，重复时界面会提示并阻止开始。
+- 在统一设置的“每首版本数量”选择 1–20 个，每个版本（A–T）选择一个目标风格；同一首歌的各版本须为不同风格，重复时界面会提示并阻止开始。v1.5.0 保存的 10 个版本设置会自动补齐到 20 个，原有选择不变。
 - 单首歌曲的“版本数”可改为自己的数量，各版本风格下拉菜单空值代表跟随统一。
-- 10 种预设风格：R&B、Lo-fi、Jazz、Acoustic、Remix、Phonk、Hardstyle、Hardtekk、Soul、Funk，也可自定义。“写下具体要求”里每个版本都有独立补充要求。
-- 每个版本都是一次完整的 YuE2 生成，版本越多排队越久；第一个版本做原曲分析，其他版本复用。作品页按歌曲分组显示所有版本。
+- 51 种预设风格分为 9 组（见“更多风格与智能默认”），也可自定义。“写下具体要求”里每个版本都有独立补充要求。
+- 每个版本都是一次完整的 YuE2 生成，版本越多排队越久（之前在应用电脑实测约 3.5 分钟生成一个 3 分钟版本，20 个版本需要一个多小时）；同一首歌里改编模式与变调变速相同的版本共用第一次的原曲分析。队列最多容纳 2000 个任务（含变速版本与 DJ 任务）。作品页按歌曲分组显示所有版本。
 
 ## 加速与慢速版本
 
-- **作用**：每个版本（A–J）生成完成后，自动从该版本另存三个变速版本：Speed Up（速度 1.12 ×、升 1 个半音）、Slowed（速度 0.85 ×、降 2 个半音）、Super Slowed（速度 0.75 ×、降 3 个半音）。速度与音高分别设定，不加混响；旋律、歌词与换声结果与原版本相同。
+- **作用**：每个版本（A–T，管弦组曲的三个部分除外）生成完成后，自动从该版本另存三个变速版本：Speed Up（速度 1.12 ×、升 1 个半音）、Slowed（速度 0.85 ×、降 2 个半音）、Super Slowed（速度 0.75 ×、降 3 个半音）。速度与音高分别设定，不加混响；旋律、歌词与换声结果与原版本相同。
 - **设置**：统一设置的“加速与慢速版本”面板，默认开启，整批关闭后只生成原速版本；逐首“单独调整”里可跟随统一或单独设置这首歌。排队时写入每个任务，之后改动不影响已排队的任务。适用于全新演绎、保留原唱与纯音乐。
 - **处理**：由本机 FFmpeg 从已完成的版本直接处理（与“我的作品”里手动变调变速相同的派生任务），不重新生成、不占用显卡，通常几秒完成，可与下一首的生成并行。手动变调变速另存的作品不再派生变速版本。
 - **作品**：显示在同一首歌下，卡片标注 Speed Up / Slowed / Super Slowed 与版本字母；名称如 `Lo-fi Justin Bieber - Baby (Speed Up).wav`，换声作品保留 `Original Voice`。可收藏、下载 WAV / MP3，也可再次变调变速。
@@ -66,7 +90,7 @@
 
 构建前端：在 `sing-studio-batch-preview/` 使用现有 Node 环境运行 `npm ci`（首次准备依赖）、`npm run build` 和 `npm run test:sites`。构建保留原有 Sites 兼容包装；生产功能必须连接本机 Python 服务，本次不发布云站点。
 
-后端验证：用现有音乐环境的 Python 运行 `dual-version/test_controls.py`、`test_instrumental.py`、`test_adjust.py`、`test_versions.py` 和 `test_voice.py`（纯音乐、变调与换声测试使用 runtime 中的 FFmpeg，先设置 `SING_LOCAL_TEST`；`test_voice.py` 用接口相同的替代引擎，不需要安装 Seed-VC）；运行 `test_backend.py` 前设置 `SING_LOCAL_TEST` 为本机 runtime 目录。变调变速的真实推理验证：`dual-version/benchmark_adjust.py --runtime ... --output <Git 外目录> --validation dual-version/VALIDATION-v1.3.0.json`，可加 `--source <本机纯伴奏 WAV>`；全部通过后才会把该版本验证标记为通过，部署脚本以此为准。后者需要既有示例音频与模型文件来验证可用性，推理本身使用测试进程。换声的真实推理验证：`dual-version/benchmark_voice.py --runtime ... --output <Git 外目录> --source <本机有人声的歌曲> --start <演唱段落秒数> --validation dual-version/VALIDATION-v1.4.0.json`（可加 `--lyrics-file`）。v1.4.0 需要 `benchmark_adjust.py` 与 `benchmark_voice.py` 都写入同一验证文件并通过。真实推理验证另用 `benchmark_controls.py --runtime ... --installed-app ... --output ...`，结果目录须留在 Git 外。
+后端验证：用现有音乐环境的 Python 运行 `dual-version/test_controls.py`、`test_instrumental.py`、`test_adjust.py`、`test_versions.py`、`test_voice.py`、`test_speed_variants.py`、`test_styles.py`、`test_kid_voice.py`、`test_dj.py` 和 `test_suite.py`（纯音乐、变调、换声、童声、DJ 与组曲测试使用 runtime 中的 FFmpeg，先设置 `SING_LOCAL_TEST`；中文 Windows 上另设 `PYTHONUTF8=1`，否则 `test_voice.py` 读取换声脚本的中文输出时会按 GBK 解码失败；`test_voice.py` 用接口相同的替代引擎，不需要安装 Seed-VC）；运行 `test_backend.py` 前设置 `SING_LOCAL_TEST` 为本机 runtime 目录。变调变速的真实推理验证：`dual-version/benchmark_adjust.py --runtime ... --output <Git 外目录> --validation dual-version/VALIDATION-v1.3.0.json`，可加 `--source <本机纯伴奏 WAV>`；全部通过后才会把该版本验证标记为通过，部署脚本以此为准。后者需要既有示例音频与模型文件来验证可用性，推理本身使用测试进程。换声的真实推理验证：`dual-version/benchmark_voice.py --runtime ... --output <Git 外目录> --source <本机有人声的歌曲> --start <演唱段落秒数> --validation dual-version/VALIDATION-v1.4.0.json`（可加 `--lyrics-file`）。v1.4.0 需要 `benchmark_adjust.py` 与 `benchmark_voice.py` 都写入同一验证文件并通过。v1.6.0 另需 `dual-version/benchmark_variety.py --runtime ... --output <Git 外目录> --source <本机歌曲或纯伴奏> --validation dual-version/VALIDATION-v1.6.0.json`：用真实 YuE2 生成每组一种新风格、四种新演唱者（童声含本机童声处理）、三个组曲部分与组曲，并运行 DJ 效果与串烧；三项实测都通过后才能部署。真实推理验证另用 `benchmark_controls.py --runtime ... --installed-app ... --output ...`，结果目录须留在 Git 外。
 
 更新现有安装：先完成构建和验证，再使用 `dual-version/deploy-release.ps1 -AppRoot <现有 sing-studio 目录>`。脚本拒绝活动队列，备份应用代码和前端，保留用户数据，并启动原有本机入口。仅用于已安装应用，不创建或下载推理环境；换声引擎由 `seedvc-install.ps1` 单独安装，更新应用不会改动它。
 
