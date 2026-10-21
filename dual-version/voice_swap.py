@@ -15,7 +15,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from generation_controls import LETTERS, MAX_VERSIONS
+from generation_controls import LETTERS, MAX_VERSIONS, LEGACY_VERSIONS
 
 ROOT = Path(__file__).resolve().parent
 TEST = Path(os.environ.get('SING_LOCAL_TEST', str(ROOT.parent / 'local-test')))
@@ -54,13 +54,15 @@ def available():
 
 
 def validate(value, *, inherit=False):
-    """Shared or per-song setting: one switch per version letter A-J, and the octave rule.
-    None means a song follows the shared setting."""
+    """Shared or per-song setting: one switch per version letter A-T, and the octave rule.
+    None means a song follows the shared setting. Ten switches (before v1.6.0) gain K-T switched off."""
     if value is None and inherit:
         return None
     if not isinstance(value, dict) or set(value) - set(DEFAULT):
         raise ValueError('换声设置无效。')
     versions, octave = value.get('versions', DEFAULT['versions']), value.get('octave', DEFAULT['octave'])
+    if isinstance(versions, list) and len(versions) == LEGACY_VERSIONS:
+        versions = versions + [False] * (MAX_VERSIONS - LEGACY_VERSIONS)
     if (not isinstance(versions, list) or len(versions) != MAX_VERSIONS or not all(isinstance(v, bool) for v in versions)
             or octave not in OCTAVES):
         raise ValueError('换声设置无效。')

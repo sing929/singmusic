@@ -1,3 +1,45 @@
+# Sing Studio v1.6.0 · 2026-10-21
+
+## 本次交付
+
+- 用户确认需求（2026-10-21，三轮问答）：要更多音乐变化——童声指“小朋友在唱”，用“YuE2 童声要求 + 本机变声处理”实现；说唱用原歌词；DJ 四项都要（亚洲 DJ 版、Club EDM、DJ 串烧、DJ 效果）；管弦与经典四项都要（电影管弦、古典、经典老歌、组曲按“分段切换”）；新增演唱者合唱团、男女对唱、歌剧；风格组亚洲、乐队、世界与拉丁、轻松与趣味全部加入；风格智能默认；一次发布全部功能；每首最多 20 个版本。另一项是我替用户定的：童声不用于保留原唱——`AGENTS.md` 规定原唱模式不改变录音的人声。
+- 风格目录 `dual-version/styles.json`（界面与后端共用）：9 组 51 种风格，每种有英文编曲描述、中文名与可选智能默认；7 种演唱者（含 kid 的 +2 半音默认）；组曲三部分（风格、Suite I/II/III 标签、乐章描述）。`generation_controls.py` 从中读取 `STYLE_TAGS`、`GENDERS`、`DEFAULT_STYLES`（20 种，前 10 种与 v1.5.0 相同）、`SUITE`；新增 `style_info`、`apply_smart_defaults`、`validate_suite`；`MAX_VERSIONS` 20、`LETTERS` A–T；`text_list` 与 `voice_swap.validate` 把 v1.5.0 的 10 项列表补齐到 20 项。
+- `service.py`：批次逐首拆成 `expand_item`——智能默认按版本风格应用（`smart_defaults` 开关、`explicit` 逐首字段，记录在任务 `smart_defaults`），组曲另加三个部分（参考旋律、无换声、无变速、`suite_part`，名称附 Suite I/II/III）；请求里的 `smart_applied` / `suite_part` 会被丢弃。原曲分析只在模式与变调变速相同的版本间复用。演唱者 kid / duet / choir 不换声；kid 任务带 `kid: true`，名称附 `Kid Voice`。新增 `finished_work`、`queue_derived`（派生任务通用，名称累加父任务的所有说明）、`create_dj`、`create_mix`、`queue_suite`（三部分都完成时只派生一次，`data/suites/<id>.json` 标记）；效果队列处理 adjust / dj / mix / suite；队列容量 `QUEUE_LIMIT` 2000；设置新增 `smart_defaults`、`suite`，逐首新增 `suite`；新路由 `POST /api/jobs/<id>/dj`、`POST /api/mix`。
+- `engine.py`：kid 任务生成后 `separate-generated` → `kid_voice.convert`；`run_effect` 处理 dj / mix / suite；`validate` 分块读取音频（长串烧不占满内存），派生作品长度以实际渲染为准，MP3 超时随长度增加；结果说明附童声与各派生说明。
+- 新模块 `kid_voice.py`（八度判断按 pYIN 中位音高 < A3；Rubber Band 只用于升八度且 `formant=shifted`，共振峰全部由频谱包络变形决定——实测 FFmpeg 8.1.1 的 `formant=preserved` 向上只部分有效、向下无效）、`dj_tools.py`（节拍与 Krumhansl 调性、Build-up 与 Drop、滤波渐入、回声结尾、自动排序、统一速度的串烧与低音交换、软限幅流式写出）、`suite.py`（安静点、起音包络对齐且在重复节拍中取最小位移、等功率交叉淡化）。
+- 界面 `App.jsx` / `styles.css`：分组下拉风格选择与智能默认提示、按风格组填充 / 随机、智能默认开关、演唱者（含说明）、童声等不换声提示、管弦组曲面板与逐首开关、20 个版本；“我的作品”新增“DJ 效果”对话框、“DJ 串烧”勾选条与对话框（排序、自动排序、过渡拍数、名称）；作品卡片、队列行、详情与确认对话框显示新信息。修正：新对话框的复选框在状态更新函数里读取 `e.target` 导致点击不生效，改为先取值。
+- 版本源、package / lock、README、CHANGELOG 同步为 1.6.0；`deploy-release.ps1` 文件清单加入 `kid_voice.py`、`dj_tools.py`、`suite.py`、`styles.json`；`.gitignore` 允许清单加入新模块、测试、`benchmark_variety.py` 与 `VALIDATION-v1.6.0.json`。
+
+## 本次验证（开发电脑 Xeon + GTX 1070，无 YuE2 / Seed-VC）
+
+- 前端生产构建与 4 项打包测试通过。后端 70 项回归通过：原有 48 项（`test_versions.py` 改为 20 个版本并新增旧设置补齐，共 5 项）与新增 `test_styles.py` 7、`test_kid_voice.py` 4、`test_dj.py` 6、`test_suite.py` 4。中文 Windows 控制台须设 `PYTHONUTF8=1`，否则 `test_voice.py` 的自检按 GBK 读取中文输出而报错（v1.6.0 之前就存在的环境问题）。
+- 真实 FFmpeg（含 Rubber Band）处理合成音频：童声共振峰上移且音高不变、低声部升八度；Build-up 的 Drop 落在能量跳升处、前半拍静音、其余不变；回声结尾在结尾前 8 拍的拍点截断并延续 8 拍；三首 120 / 126 / 62 BPM 的串烧统一到同一速度、过渡正好 8 拍、音量拉平、无削波；组曲在安静处切换并对齐 150 ms 的偏移。
+- 隔离浏览器实际操作（替代安装 `rt-voice`，队列暂停）：20 个版本、按“亚洲 DJ 版”填充并保存 20 种不同风格（v1.5.0 的 10 项设置自动补齐）；智能默认提示；童声提示与“童声不换声”；组曲开关与三部分；确认对话框“5 个完整版本 + 1 首管弦组曲”；入队后 A/B 为保留原唱 + 速度 105% / 115%，C–E 为童声组曲部分且 D、E 复用 C 的分析（测试任务已移除）；DJ 效果三项勾选与名称预览、手动渲染为 29.7 秒新作品；串烧勾选、排序、8 拍、中文名称，手动渲染为 79.4 秒并单独成组；375 px 宽无横向滚动；无控制台错误。
+- **未完成：应用电脑上的真实生成、童声处理与组曲的实测、主观试听。** `VALIDATION-v1.6.0.json` 为 `passed: false`，所需基准为 `adjust`、`voice` 与新增的 `variety`，三项都通过后才能用 `deploy-release.ps1` 部署。v1.3.0–v1.5.0 的应用电脑实测同样尚未完成。
+
+## 在应用电脑（i7-14700F + RTX 5070）上完成
+
+1. 先按 v1.4.0 一节完成 Seed-VC 的下载与安装（如尚未完成）。
+2. 拉取本分支（或合并后的 main），在 `sing-studio-batch-preview/` 运行 `npm ci`、`npm run build`、`npm run test:sites`。
+3. 回归：用 ace-env 的 Python、设置 `SING_LOCAL_TEST` 与 `PYTHONUTF8=1` 后运行全部 11 个 `test_*.py`。
+4. 实测（输出目录放在 Git 外）：`benchmark_adjust.py`、`benchmark_voice.py`（参数同 v1.4.0 一节），以及 `dual-version\benchmark_variety.py --runtime <local-test> --output <Git 外目录> --source <本机歌曲或纯伴奏> [--start <秒>] --validation dual-version\VALIDATION-v1.6.0.json`。variety 用同一段 30 秒原曲：8 种代表风格（每组一种）、童声 / 对唱 / 合唱 / 歌剧（自由重创、占位歌词）、三个组曲部分与组曲、DJ 效果与两首串烧；约 15 分钟。
+5. 三项都通过后（`passed: true`），确认队列空闲，用 `dual-version\deploy-release.ps1 -AppRoot <现有 sing-studio 目录>` 更新应用。
+6. 试听：新风格是否像所选风格（尤其亚洲 DJ 版与说唱）、童声 / 对唱 / 合唱 / 歌剧是否被遵从、童声处理是否自然（`kid-voice.json` 的八度与共振峰，对比 `generated.wav`）、组曲转换点、DJ 效果的拍点、串烧过渡。把听感与用时记录到本文件。
+
+## 已知限制
+
+- 风格、演唱者与说唱是给 YuE2 的文字要求，模型不一定遵从；童声、对唱、合唱尤其需要试听确认。智能默认的速度是固定比例，不按原曲 BPM 计算。
+- 童声处理只作用于新生成的人声：UVR 未分干净的伴奏里若残留生成人声，会听到未处理的成人声影子；大幅升八度可能有颗粒感。
+- 节拍与调性由 librosa 估计；节奏不明显或变速的歌曲，Drop 位置、回声拍点、串烧过渡和组曲对齐可能不准。速度差超过约 16% 的歌曲在串烧中不强行对齐。
+- 每首 20 个版本 + 变速版本最多 80 个作品；按之前约 3.5 分钟生成一个 3 分钟版本估算，20 个版本需要一个多小时。队列容量 2000 包含派生任务。
+
+## Git
+
+- 本分支 `feature/music-variety-v1.6.0` 基于 main（v1.5.0，`fc15ab8`），以 main 为目标开 PR；合并后打 `v1.6.0` 标签。不得强制推送或覆盖标签。
+- Git 只包含维护源码、文档及脱敏验证报告；替代运行环境、测试音频与作品均在 Git 外。
+
+---
+
 # Sing Studio v1.5.0 · 2026-10-19
 
 ## 本次交付

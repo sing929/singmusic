@@ -178,21 +178,37 @@ def align_and_mix(jobdir):
         'mix_gain':gain,'vocal_timing_changed':False,
         'notice':'已保留原始分离人声，并对新伴奏做自动对齐。请试听复核节拍、和声及分离残留。'})
 
-def validate(jobdir,config):
+DERIVED_NOTICES={'adjust':'已在本机对原作品变调变速，未重新生成；请试听复核音质。',
+    'dj':'已在本机按检测到的节拍给原作品加上 DJ 效果，未重新生成；请试听复核。',
+    'mix':'已在本机把所选作品按节拍对齐，混成一首不间断的 DJ 串烧，未重新生成；请试听复核过渡。',
+    'suite':'已在本机把三个管弦版本在安静处衔接成一首组曲，未重新生成；请试听复核衔接。'}
+
+def audio_stats(path):
+    """(seconds, rate, channels, rms, peak, finite) read in blocks, so hour-long mixes fit in memory."""
     import numpy as np
     import soundfile as sf
-    derived=config.get('kind')=='adjust'
+    info=sf.info(path);energy=0.;count=0;peak=0.;finite=True
+    for block in sf.blocks(str(path),blocksize=1<<20,always_2d=True,dtype='float64'):
+        finite=finite and bool(np.isfinite(block).all())
+        energy+=float(np.square(block).sum());count+=block.size
+        if block.size:peak=max(peak,float(np.max(np.abs(block))))
+    return info.frames/info.samplerate,info.samplerate,info.channels,(energy/count)**.5 if count else 0.,peak,finite
+
+def validate(jobdir,config,seconds=None):
+    """Check every output file, write the MP3 and result.json. `seconds` replaces the queued length
+    for works whose length is only known once made (DJ edits, mixes, suites)."""
+    derived=config.get('kind') in DERIVED_NOTICES
+    expected=config['duration'] if seconds is None else seconds
     files={'result':'result.wav'} if derived else {'result':'result.wav','original':'source.wav'}
     if config['mode']=='preserve' and not derived:files.update(vocals='vocals.wav',instrumental='instrumental.wav')
     checks={}
     for kind,name in files.items():
-        data,sr=sf.read(jobdir/name,always_2d=True)
-        duration=len(data)/sr;rms=float(np.sqrt(np.mean(data**2)));peak=float(np.max(np.abs(data)))
-        duration_ok=abs(duration-config['duration'])<=.2
-        if not np.isfinite(data).all() or (rms<1e-5 and kind!='vocals') or sr!=48000 or data.shape[1]!=2 or not duration_ok:
+        duration,sr,channels,rms,peak,finite=audio_stats(jobdir/name)
+        duration_ok=abs(duration-expected)<=.2
+        if not finite or (rms<1e-5 and kind!='vocals') or sr!=48000 or channels!=2 or not duration_ok:
             raise RuntimeError('输出音频未通过完整性检查：'+kind)
-        checks[kind]={'seconds':duration,'sample_rate':sr,'channels':data.shape[1],'rms':rms,'peak':peak}
-    subprocess.run([str(FFMPEG),'-nostdin','-y','-v','error','-i',str(jobdir/'result.wav'),'-c:a','libmp3lame','-b:a','320k',str(jobdir/'result.mp3')],check=True,creationflags=CREATE_NO_WINDOW,timeout=180)
+        checks[kind]={'seconds':duration,'sample_rate':sr,'channels':channels,'rms':rms,'peak':peak}
+    subprocess.run([str(FFMPEG),'-nostdin','-y','-v','error','-i',str(jobdir/'result.wav'),'-c:a','libmp3lame','-b:a','320k',str(jobdir/'result.mp3')],check=True,creationflags=CREATE_NO_WINDOW,timeout=max(180,int(expected/4)))
     files['mp3']='result.mp3'
     if config.get('output_name'):
         from generation_controls import output_name
@@ -203,9 +219,11 @@ def validate(jobdir,config):
             filename=stem+ext
             (jobdir/files[kind]).replace(jobdir/filename)
             files[kind]=filename
-    notice='已在本机对原作品变调变速，未重新生成；请试听复核音质。' if derived else ('已按纯音乐要求生成，跳过歌词识别；请试听复核。'+('自由重创允许旋律及段落变化。' if config.get('melody_mode')=='free' else '')) if config.get('instrumental') else ('保留原唱模式已做自动对齐，仍需试听复核。' if config['mode']=='preserve' else ('YuE2 按歌词和目标要求自由重创；旋律、段落与声音可能变化，请试听复核。' if config.get('melody_mode')=='free' else 'YuE2 根据识别的旋律重新演绎；人声与歌词可能变化，请试听复核。'))
+    notice=DERIVED_NOTICES[config['kind']] if derived else ('已按纯音乐要求生成，跳过歌词识别；请试听复核。'+('自由重创允许旋律及段落变化。' if config.get('melody_mode')=='free' else '')) if config.get('instrumental') else ('保留原唱模式已做自动对齐，仍需试听复核。' if config['mode']=='preserve' else ('YuE2 按歌词和目标要求自由重创；旋律、段落与声音可能变化，请试听复核。' if config.get('melody_mode')=='free' else 'YuE2 根据识别的旋律重新演绎；人声与歌词可能变化，请试听复核。'))
     swap=json.loads((jobdir/'voice-swap.json').read_text(encoding='utf-8')) if config.get('voice') and not derived and (jobdir/'voice-swap.json').exists() else None
     if swap:notice+=swap['notice']
+    kid=json.loads((jobdir/'kid-voice.json').read_text(encoding='utf-8')) if config.get('kid') and not derived and (jobdir/'kid-voice.json').exists() else None
+    if kid:notice+=kid['notice']
     write_json(jobdir/'result.json',{'files':files,'checks':checks,'notice':notice})
 
 def reuse_analysis(jobdir,config):
@@ -245,8 +263,29 @@ def run_adjustment(jobdir,config):
     progress('validating','正在检查音频并保存作品');validate(jobdir,config)
     progress('complete','作品已完成')
 
+def run_effect(jobdir,config):
+    """A DJ edit, a non-stop DJ mix or an orchestral suite made from finished works, never regenerated."""
+    def progress(stage,message):write_json(jobdir/'progress.json',{'stage':stage,'message':message,'updated_at':time.time()})
+    kind=config['kind']
+    sources=[Path(s['path']) for s in config.get('sources',[])] or [Path(config['source'])]
+    for path in sources:
+        if not path.is_file():raise RuntimeError('找不到原作品音频：'+path.name)
+    if kind=='dj':
+        import dj_tools
+        report=dj_tools.render_effects(sources[0],jobdir/'result.wav',config['effects'],progress)
+    elif kind=='mix':
+        import dj_tools
+        report=dj_tools.render_mix(config['sources'],jobdir/'result.wav',config['order'],config['transition_beats'],FFMPEG,progress)
+    else:
+        import suite
+        report=suite.render(sources,jobdir/'result.wav',progress)
+    write_json(jobdir/f'{kind}.json',report)
+    progress('validating','正在检查音频并保存作品');validate(jobdir,config,seconds=report['output_seconds'])
+    progress('complete','作品已完成')
+
 def run_pipeline(jobdir,config):
     if config.get('kind')=='adjust':return run_adjustment(jobdir,config)
+    if config.get('kind') in ('dj','mix','suite'):return run_effect(jobdir,config)
     import audio_adjust
     def progress(stage,message):write_json(jobdir/'progress.json',{'stage':stage,'message':message,'updated_at':time.time()})
     def stage(name):
@@ -298,6 +337,10 @@ def run_pipeline(jobdir,config):
     elif voice:
         progress('cleaning','正在分离新生成的人声与伴奏');stage('separate-generated')
         progress('voice','正在换成原唱音色');voice_swap.convert(jobdir,config,progress)
+    elif config.get('kid'):
+        import kid_voice
+        progress('cleaning','正在分离新生成的人声与伴奏');stage('separate-generated')
+        progress('kid','正在把新歌声变成童声');kid_voice.convert(jobdir,config,progress,FFMPEG)
     else:
         (jobdir/'generated.wav').replace(jobdir/'result.wav')
     if adjust and adjust['reverb']:
