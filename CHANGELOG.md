@@ -1,5 +1,13 @@
 # 更新记录
 
+## 1.7.0 — 2026-10-22
+
+- 全部风格（`all_styles`）：统一设置一个开关，逐首可跟随统一或单独开关（`track.all_styles`，空值跟随）。开启后这首歌一次生成目录里的全部风格（现为 55 种），每种一个完整版本，按风格组顺序排队，版本字母 A–Z 之后接 AA、AB …（55 种为 A–BC，加管弦组曲为 BD–BF）。批次由后端按 `styles.json` 展开（请求里的版本列表被忽略），不受每首 20 个版本的限制；每首的随机种子各不相同。
+- 全部风格的歌曲不生成加速与慢速版本（否则每首会有 220 个作品）；完成后仍可在“我的作品”单独变调变速。换声改为一个开关同时控制全部版本（`voice_swap.for_all_styles`：只有全部版本开关都打开时才换声，界面的单个开关会一起打开或关闭）。只用统一要求，各版本补充要求在关闭后恢复。智能默认按每个风格照常应用；原曲分析在改编模式与变调变速相同的版本间共用。版本数设置保留，关闭全部风格后恢复使用。
+- 说唱新增 Rap、Melodic Rap、Drill、Emo Rap，都有自己的编曲描述与“全新演绎 + 自由旋律”智能默认；说唱组现为 Rap、Hip-hop、Trap、Boom Bap、Melodic Rap、Drill、Emo Rap、Phonk，风格共 55 种。默认 20 种风格的第 14、17、20 项改为 Rap、Melodic Rap、Drill（原为 Hip-hop、Reggae、Bossa Nova），前 10 项不变；已保存的设置不受影响。
+- 界面：统一设置新增“全部风格”开关与分组风格清单、用时估算；开启时版本数与各版本风格选择、按组填充隐藏或停用，换声面板显示单个开关，变速面板注明不生成。逐首新增“全部风格”下拉。底部、确认对话框（新增“全部风格”一行与用时提醒）与使用说明同步。“我的作品”按版本字母长度再按字母排序（A … Z、AA …）。
+- 新增 `test_all_styles.py` 8 项回归（说唱组与新风格、全部风格顺序与 58 个任务上限、版本字母、换声单开关、统一与逐首设置保存及旧值回退、展开 55 个版本且无变速版本、智能默认 / 换声 / 组曲、无效开关与队列容量）；`test_versions.py` 随默认风格更新。应用电脑实测 `benchmark_variety.py` 新增 4 种新说唱风格的有词说唱生成（自由旋律，检查歌词与 `cot=off` 送到引擎），版本验证仍需要 adjust、voice 与 variety 三项都通过，见 `dual-version/VALIDATION-v1.7.0.json`。
+
 ## 1.6.0 — 2026-10-21
 
 - 风格扩充到 51 种、9 组：经典；亚洲 DJ 版（慢摇 Manyao、Vinahouse、Funkot、Jungle Dutch、Melbourne Bounce、抖音 DJ）；电子舞曲 EDM（含原有 Remix、Hardstyle、Hardtekk，新增 House、Big Room、Future Bass、Trance、Dubstep、Drum & Bass、Techno）；说唱（Hip-hop、Trap、Boom Bap、Phonk）；管弦与古典（Cinematic Orchestra、Classical Piano、String Quartet、Baroque、Waltz、Classic Oldies）；亚洲流行（中国风、K-pop、J-pop、Malay Pop、Dangdut）；乐队；世界与拉丁；轻松与趣味。每种风格有自己的编曲描述，风格目录 `dual-version/styles.json` 由界面与后端共用。界面改为分组下拉选择，可按组一键填充或随机挑选不同风格，仍可自定义。

@@ -62,3 +62,9 @@ html{scroll-padding-bottom:100px}input,select,textarea,summary{scroll-margin-bot
 .dj-options{display:flex;flex-direction:column;gap:10px;margin-top:16px}.dj-option{display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid var(--line);border-radius:8px;cursor:pointer;background:#fff}.dj-option.chosen{border-color:#244333;background:#f2f6ec}.dj-option input{margin-top:3px}.dj-option b{display:block;font-size:13px;color:#355237}.dj-option small{display:block;font-size:11px;color:#667363;line-height:1.7;margin-top:3px}
 .modal .choice-field,.modal .speed-toggle{margin-top:14px}
 @media(max-width:700px){.suite-parts{grid-template-columns:1fr}.style-fill select{min-width:0;width:100%}.style-fill>label:first-child{flex-wrap:wrap;white-space:normal}}
+
+/* v1.7.0: the "all styles" switch. */
+.all-styles-toggle{margin-top:14px;padding:12px 14px;background:#f2f5ed;border-radius:8px}
+.all-styles-list{display:grid;gap:6px;margin-top:12px;padding:12px 14px;background:#fff;border:1px solid var(--line);border-radius:8px;font-size:12px;line-height:1.7;color:#687861}.all-styles-list p{margin:0;display:grid;grid-template-columns:120px minmax(0,1fr);gap:10px}.all-styles-list b{font-weight:550;color:#355237}.all-styles-list .setting-note{display:block;margin-top:6px}
+.song-all-styles{margin:0;align-self:end;padding:8px 10px;background:#f2f5ed;border-radius:6px;font-size:12px;color:#526353;line-height:1.6}
+@media(max-width:700px){.all-styles-list p{grid-template-columns:1fr;gap:0}}

@@ -23,6 +23,10 @@ LETTERS = 'ABCDEFGHIJKLMNOPQRST'
 DEFAULT_STYLES = CATALOG['defaults']
 GENDERS = {name: info['tags'] for name, info in CATALOG['singers'].items()}
 SUITE = CATALOG['suite']
+# The "all styles" switch gives a song one version per catalog style, in group order.
+ALL_STYLES = [style for group in CATALOG['groups'] for style in group['styles']]
+# The most generation jobs one song can make: every style plus the three suite parts.
+MAX_SONG_JOBS = len(ALL_STYLES) + len(SUITE)
 SMART_FIELDS = ('mode', 'melody_mode', 'adjust')
 TONES = {
     'natural': 'natural vocal timbre', 'warm': 'warm, mellow vocals, rounded intimate vocal tone',
@@ -57,6 +61,10 @@ def version_count(value, *, inherit=False):
     if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= MAX_VERSIONS:
         raise ValueError(f'每首版本数须为 1–{MAX_VERSIONS} 的整数。')
     return value
+
+def version_letter(index):
+    """A–Z, then AA, AB, … like spreadsheet columns; the first 20 are LETTERS."""
+    return chr(65 + index) if index < 26 else version_letter(index // 26 - 1) + chr(65 + index % 26)
 
 def text_list(value, limit, *, allow_empty, message, pad=None):
     """Exactly MAX_VERSIONS strings, one per version letter. A 10-entry list from before v1.6.0

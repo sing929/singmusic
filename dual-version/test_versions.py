@@ -130,7 +130,7 @@ class VersionsTest(unittest.TestCase):
             seeds = [c['seed'] for c in configs]
             self.assertEqual(len(set(seeds)), 20)
             self.assertLessEqual(max(seeds), 2147483647)
-            self.assertEqual(twenty[19]['output_name'], 'Bossa Nova Song')
+            self.assertEqual(twenty[19]['output_name'], 'Drill Song')
             self.assertIn('note 19', configs[19]['caption'])
             one = self.api('/api/batch', {'request_id': 'one-version-12345678', 'items': [{'track_id': self.tid, 'instructions': '',
                 'variants': [{'style': 'Soul'}]}]})['jobs']

@@ -75,6 +75,13 @@ def for_variant(setting, letter):
     return {'target': 'original', 'octave': setting['octave']} if setting['versions'][LETTERS.index(letter)] else None
 
 
+def for_all_styles(setting):
+    """The job request for every version of an "all styles" song. Those versions have no letter
+    switches of their own: they swap only when all version switches are on (the interface's one switch)."""
+    setting = validate(setting if setting is not None else {})
+    return {'target': 'original', 'octave': setting['octave']} if all(setting['versions']) else None
+
+
 def validate_job(value):
     if value is None:
         return None

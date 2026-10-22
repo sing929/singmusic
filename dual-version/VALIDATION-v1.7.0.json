@@ -1,0 +1,60 @@
+{
+  "version": "1.7.0",
+  "real_local_inference": false,
+  "subjective_listening_verified": false,
+  "passed": false,
+  "dev_checks_passed": true,
+  "required_benchmarks": [
+    "adjust",
+    "voice",
+    "variety"
+  ],
+  "dev_environment": "Development PC (Xeon + GTX 1070) without YuE2 or Seed-VC: stand-in runtime with FFmpeg 8.1.1 (with Rubber Band), Python 3.11 and placeholder YuE2 files; a stand-in Seed-VC inference.py with the pinned interface runs under the real seedvc_runner.py.",
+  "catalog": {
+    "styles": 55,
+    "groups": ["classic", "asian-dj", "edm", "rap", "orchestra", "asian", "band", "world", "chill"],
+    "rap": ["Rap", "Hip-hop", "Trap", "Boom Bap", "Melodic Rap", "Drill", "Emo Rap", "Phonk"],
+    "new_styles": ["Rap", "Melodic Rap", "Drill", "Emo Rap"],
+    "all_styles_versions": 55,
+    "max_song_jobs": 58,
+    "max_versions": 20,
+    "queue_limit": 2000
+  },
+  "frontend_build": true,
+  "packaging_tests": 4,
+  "backend_regressions": 8,
+  "control_regressions": 6,
+  "instrumental_regressions": 6,
+  "adjust_regressions": 8,
+  "versions_regressions": 5,
+  "voice_regressions": 9,
+  "speed_variant_regressions": 7,
+  "style_regressions": 7,
+  "kid_voice_regressions": 4,
+  "dj_regressions": 6,
+  "suite_regressions": 4,
+  "all_styles_regressions": 8,
+  "regressions_total": 78,
+  "test_environment_note": "On a Chinese-locale Windows console, run the tests with PYTHONUTF8=1; otherwise test_voice.py's self-test reads the runner's Chinese stderr as GBK and errors (an environment issue that predates v1.6.0).",
+  "checks": [
+    "Catalog: the rap group is Rap, Hip-hop, Trap, Boom Bap, Melodic Rap, Drill, Emo Rap, Phonk; the four new styles have rap tags and the remix + free-melody smart default; every style is in exactly one group and reaches the engine request; 20 distinct defaults keep v1.5.0's first ten and now include Rap, Melodic Rap and Drill.",
+    "All styles: ALL_STYLES is the catalog in group order (55); version letters run A-Z, AA, AB ... (A-BC, suite parts BD-BF) and never repeat; MAX_SONG_JOBS (58) bounds the per-song seeds.",
+    "Settings: all_styles defaults to false, saves and reloads, rejects non-booleans, and a broken stored value falls back to false; per-song all_styles saves true / false / null (follow) and rejects other values.",
+    "Batch: with all_styles the server expands every catalog style (the request's own versions are ignored), one pair, distinct seeds, no speed versions, analysis reused by versions with the same source settings; smart defaults apply per style (rap styles free melody, Asian DJ keep the original singer); the suite adds three parts after the styles; an invalid switch or a full queue rejects the batch before any job is created; without the switch the 20-version limit still applies.",
+    "Voice swap: an all-styles song swaps every version only when all version switches are on (the interface's single switch), otherwise none; Asian DJ versions that keep the original singer are not swapped."
+  ],
+  "browser_verified": [
+    "Stand-in install refreshed to v1.7.0; the interface connects and reports v1.7.0; no console errors",
+    "Shared 'all styles' switch (real click): version count disabled, per-version style pickers and group fill replaced by the grouped list of all 55 styles (rap group of 8) with the time estimate; voice swap shows one switch; speed panel says no speed versions; the server saved all_styles = true and it survived a reload",
+    "Song row following the shared switch shows 'all 55 styles, A-BC, no speed versions'; footer reads 'each song all 55 styles'",
+    "Confirmation dialog: '1 song -> 58 full versions + 1 orchestral suite', 'all 55 styles (9 groups)', the all-styles row with ~3 hours per song, and the queue-length note",
+    "Confirmed batch (queue paused): 58 queued jobs in one pair, A R&B ... BC Music Box then suite parts BD-BF, Rap / Melodic Rap / Drill / Emo Rap as W / AA / AB / AC with remix + free melody, zero speed versions; test jobs removed afterwards",
+    "Per-song 'all styles' set to 'by version count': the song returned to its own 2 version pickers and the footer recounted; stand-in settings restored afterwards",
+    "375 px wide: no horizontal scroll with the all-styles list open"
+  ],
+  "not_done": [
+    "Real YuE2 / UVR / Seed-VC runs on the app PC (i7-14700F + RTX 5070): benchmark_adjust.py, benchmark_voice.py and benchmark_variety.py (now with four rap-vocal runs) with --validation dual-version/VALIDATION-v1.7.0.json",
+    "Listening: how well YuE2 follows the new rap styles (rapping the words rather than singing them) and the other styles in an all-styles batch",
+    "Real time of a full all-styles batch (estimate ~3 hours per 3-minute song)"
+  ]
+}
