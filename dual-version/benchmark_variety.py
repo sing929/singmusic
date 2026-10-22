@@ -1,5 +1,5 @@
-"""Local-only v1.6.0 verification on the app PC with real YuE2: a style from each new group, the new
-singers (the kid voice with its local step), an orchestral suite and the DJ tools.
+"""Local-only v1.6.0 / v1.7.0 verification on the app PC with real YuE2: a style from each new group, the new
+singers (the kid voice with its local step), the v1.7.0 rap styles rapping words, an orchestral suite and the DJ tools.
 
 Audio, requests, scores and logs stay in the output folder outside Git; only sanitized results are
 recorded. Passing says the settings reach the engine and the audio is complete, not that it sounds good.
@@ -17,6 +17,7 @@ from benchmark_adjust import audio_checks, run_engine
 
 STYLES = ('Vinahouse', 'Big Room', 'Trap', 'Cinematic Orchestra', '中国风', 'Rock', 'Reggaeton', 'Music Box')
 SINGERS = ('kid', 'duet', 'choir', 'opera')
+RAP = ('Rap', 'Melodic Rap', 'Drill', 'Emo Rap')
 # Original placeholder words, so no song's lyrics are needed.
 LYRICS = '[verse]\nMorning light across the town\nEvery window turning gold\n[chorus]\nSing it high and sing it low\nLet the little river flow'
 
@@ -110,6 +111,17 @@ def main():
                 item['passed'] = item['passed'] and kid.get('skipped') is False and (directory / 'generated.wav').is_file()
             item['passed'] = item['passed'] and item['singer_in_request']
         save(item)
+    # The v1.7.0 rap styles rap the placeholder words in free recomposition, as their smart default does.
+    for style in RAP:
+        directory = args.output / ('rap-' + style.lower().replace(' ', '-'))
+        directory.mkdir(exist_ok=True)
+        config = config_for(args.source, args.start, args.seconds, style, instrumental=False, lyrics=LYRICS, melody_mode='free')
+        item, _ = generated(directory, config, 'rap ' + style, args.seconds)
+        if item['exit_code'] == 0:
+            request = read(directory, 'yue2-request.json')
+            item['lyrics_in_request'] = request['lyrics'] == LYRICS and request['cot'] == 'off'
+            item['passed'] = item['passed'] and item['lyrics_in_request']
+        save(item)
     # Three suite parts on the shared score, then the suite made from them.
     parts = []
     for index, part in enumerate(SUITE):
@@ -155,7 +167,7 @@ def main():
                 item.update({k: made[k] for k in ('tempo', 'drop_seconds', 'echo_cut_seconds', 'target_tempo', 'order') if k in made})
                 item['passed'] = item['audio_ok']
             save(item)
-    expected = len(STYLES) + len(SINGERS) + len(SUITE) + 1 + 2
+    expected = len(STYLES) + len(SINGERS) + len(RAP) + len(SUITE) + 1 + 2
     report['passed'] = len(runs) == expected and all(r['passed'] for r in runs) and report['styles_consistent']
     (args.output / 'report.json').write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding='utf-8')
     if args.validation:

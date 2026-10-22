@@ -1,14 +1,22 @@
-# Sing Studio · v1.6.0
+# Sing Studio · v1.7.0
 
-本机 YuE2 整首音乐改编工作室。批量导入音频、可选歌词、每首 1–20 个完整版本、原唱保留、收藏和可恢复移除。音频、歌词及推理留在电脑上。
+本机 YuE2 整首音乐改编工作室。批量导入音频、可选歌词、每首 1–20 个完整版本或一次生成全部风格、原唱保留、收藏和可恢复移除。音频、歌词及推理留在电脑上。
 
-这次更新加入更多音乐变化：51 种风格分为 9 组（亚洲 DJ 版、电子舞曲、说唱、管弦与古典、亚洲流行、乐队、世界与拉丁、轻松与趣味等），新的演唱者（童声、男女对唱、合唱团、歌剧），风格智能默认，每首最多 20 个版本，管弦组曲，以及对已完成作品的 DJ 效果与 DJ 串烧。之前的加速与慢速版本、换成原唱音色、变调与变速（含 Slowed / Sped up 与可选混响）继续可用。
+v1.7.0 新增“全部风格”开关（每首一次生成全部 55 种风格）与 4 种说唱风格（Rap、Melodic Rap、Drill、Emo Rap），见下方“全部风格”。
+
+## 全部风格
+
+- 统一设置的“全部风格”开关打开后，每首歌一次生成全部 55 种风格，每种一个完整版本，按风格组顺序排队（版本 A–Z 之后为 AA、AB …，55 种为 A–BC）。逐首“全部风格”下拉可跟随统一，或单独为这首歌开启 / 关闭。版本数设置保留，关闭后恢复使用。
+- 为免每首变成 220 个作品，全部风格不生成加速与慢速版本；完成后仍可在“我的作品”单独变调变速或加 DJ 效果。换声只有一个开关，同时控制全部版本；只使用统一要求（各版本补充要求在关闭后恢复）。风格智能默认按每个风格照常应用（亚洲 DJ 版保留原唱并加快、说唱用自由旋律等）；管弦组曲可同时开启，另加 3 个版本。
+- 时间：按之前应用电脑约 3.5 分钟生成一个 3 分钟版本估算，每首约 3 小时；队列最多 2000 个任务，大约 36 首。排队后可随时暂停或移除。
+
+v1.6.0 加入更多音乐变化：51 种风格分为 9 组（亚洲 DJ 版、电子舞曲、说唱、管弦与古典、亚洲流行、乐队、世界与拉丁、轻松与趣味等），新的演唱者（童声、男女对唱、合唱团、歌剧），风格智能默认，每首最多 20 个版本，管弦组曲，以及对已完成作品的 DJ 效果与 DJ 串烧。之前的加速与慢速版本、换成原唱音色、变调与变速（含 Slowed / Sped up 与可选混响）继续可用。
 
 ## 更多风格与智能默认
 
-- **51 种风格、9 组**：经典（R&B、Lo-fi、Jazz、Acoustic、Soul、Funk）；亚洲 DJ 版（慢摇 Manyao、Vinahouse、Funkot、Jungle Dutch、Melbourne Bounce、抖音 DJ）；电子舞曲 EDM（Remix、House、Big Room、Future Bass、Trance、Dubstep、Drum & Bass、Techno、Hardstyle、Hardtekk）；说唱（Hip-hop、Trap、Boom Bap、Phonk）；管弦与古典（Cinematic Orchestra、Classical Piano、String Quartet、Baroque、Waltz、Classic Oldies）；亚洲流行（中国风、K-pop、J-pop、Malay Pop、Dangdut）；乐队（Rock、Metal、Pop-punk、Country、Blues）；世界与拉丁（Reggae、Reggaeton、Bossa Nova、Afrobeats）；轻松与趣味（Ambient、8-bit、Gospel、A Cappella、Music Box）。
+- **55 种风格、9 组**：经典（R&B、Lo-fi、Jazz、Acoustic、Soul、Funk）；亚洲 DJ 版（慢摇 Manyao、Vinahouse、Funkot、Jungle Dutch、Melbourne Bounce、抖音 DJ）；电子舞曲 EDM（Remix、House、Big Room、Future Bass、Trance、Dubstep、Drum & Bass、Techno、Hardstyle、Hardtekk）；说唱（Rap、Hip-hop、Trap、Boom Bap、Melodic Rap、Drill、Emo Rap、Phonk，其中 Rap、Melodic Rap、Drill、Emo Rap 为 v1.7.0 新增）；管弦与古典（Cinematic Orchestra、Classical Piano、String Quartet、Baroque、Waltz、Classic Oldies）；亚洲流行（中国风、K-pop、J-pop、Malay Pop、Dangdut）；乐队（Rock、Metal、Pop-punk、Country、Blues）；世界与拉丁（Reggae、Reggaeton、Bossa Nova、Afrobeats）；轻松与趣味（Ambient、8-bit、Gospel、A Cappella、Music Box）。
 - **选择**：每个版本用分组下拉菜单选择风格，仍可自定义。“按风格组填充”把版本 A 起依次换成同一组里的不同风格，组内不够时接着用其他组；也可随机挑选不同风格。风格目录 `dual-version/styles.json` 由界面和后端共用，每种风格有自己的编曲描述发给 YuE2。
-- **风格智能默认**（默认开启）：亚洲 DJ 版保留原唱并加快 5–20%（慢摇 105%、Vinahouse 115%、Funkot 120%，其余 110%），像常见的 DJ 版；说唱（Hip-hop、Trap、Boom Bap）用自由重创，用原歌词说唱而不是照原旋律唱；童声升 2 个半音。规则：智能默认会替换统一设置里的改编模式与旋律约束；速度与变调只在你没有改动时才填入；逐首“单独调整”里设置的项目不会被改动。版本卡片下方显示每种风格的智能默认，作品与队列也会注明。关闭后风格只改变编曲。
+- **风格智能默认**（默认开启）：亚洲 DJ 版保留原唱并加快 5–20%（慢摇 105%、Vinahouse 115%、Funkot 120%，其余 110%），像常见的 DJ 版；说唱（Rap、Hip-hop、Trap、Boom Bap、Melodic Rap、Drill、Emo Rap）用自由重创，用原歌词说唱而不是照原旋律唱；童声升 2 个半音。规则：智能默认会替换统一设置里的改编模式与旋律约束；速度与变调只在你没有改动时才填入；逐首“单独调整”里设置的项目不会被改动。版本卡片下方显示每种风格的智能默认，作品与队列也会注明。关闭后风格只改变编曲。
 
 ## 新演唱者与童声
 
@@ -42,7 +50,7 @@
 
 - 在统一设置的“每首版本数量”选择 1–20 个，每个版本（A–T）选择一个目标风格；同一首歌的各版本须为不同风格，重复时界面会提示并阻止开始。v1.5.0 保存的 10 个版本设置会自动补齐到 20 个，原有选择不变。
 - 单首歌曲的“版本数”可改为自己的数量，各版本风格下拉菜单空值代表跟随统一。
-- 51 种预设风格分为 9 组（见“更多风格与智能默认”），也可自定义。“写下具体要求”里每个版本都有独立补充要求。
+- 55 种预设风格分为 9 组（见“更多风格与智能默认”），也可自定义；要一次生成全部风格，用“全部风格”开关。“写下具体要求”里每个版本都有独立补充要求。
 - 每个版本都是一次完整的 YuE2 生成，版本越多排队越久（之前在应用电脑实测约 3.5 分钟生成一个 3 分钟版本，20 个版本需要一个多小时）；同一首歌里改编模式与变调变速相同的版本共用第一次的原曲分析。队列最多容纳 2000 个任务（含变速版本与 DJ 任务）。作品页按歌曲分组显示所有版本。
 
 ## 加速与慢速版本
@@ -90,7 +98,7 @@
 
 构建前端：在 `sing-studio-batch-preview/` 使用现有 Node 环境运行 `npm ci`（首次准备依赖）、`npm run build` 和 `npm run test:sites`。构建保留原有 Sites 兼容包装；生产功能必须连接本机 Python 服务，本次不发布云站点。
 
-后端验证：用现有音乐环境的 Python 运行 `dual-version/test_controls.py`、`test_instrumental.py`、`test_adjust.py`、`test_versions.py`、`test_voice.py`、`test_speed_variants.py`、`test_styles.py`、`test_kid_voice.py`、`test_dj.py` 和 `test_suite.py`（纯音乐、变调、换声、童声、DJ 与组曲测试使用 runtime 中的 FFmpeg，先设置 `SING_LOCAL_TEST`；中文 Windows 上另设 `PYTHONUTF8=1`，否则 `test_voice.py` 读取换声脚本的中文输出时会按 GBK 解码失败；`test_voice.py` 用接口相同的替代引擎，不需要安装 Seed-VC）；运行 `test_backend.py` 前设置 `SING_LOCAL_TEST` 为本机 runtime 目录。变调变速的真实推理验证：`dual-version/benchmark_adjust.py --runtime ... --output <Git 外目录> --validation dual-version/VALIDATION-v1.3.0.json`，可加 `--source <本机纯伴奏 WAV>`；全部通过后才会把该版本验证标记为通过，部署脚本以此为准。后者需要既有示例音频与模型文件来验证可用性，推理本身使用测试进程。换声的真实推理验证：`dual-version/benchmark_voice.py --runtime ... --output <Git 外目录> --source <本机有人声的歌曲> --start <演唱段落秒数> --validation dual-version/VALIDATION-v1.4.0.json`（可加 `--lyrics-file`）。v1.4.0 需要 `benchmark_adjust.py` 与 `benchmark_voice.py` 都写入同一验证文件并通过。v1.6.0 另需 `dual-version/benchmark_variety.py --runtime ... --output <Git 外目录> --source <本机歌曲或纯伴奏> --validation dual-version/VALIDATION-v1.6.0.json`：用真实 YuE2 生成每组一种新风格、四种新演唱者（童声含本机童声处理）、三个组曲部分与组曲，并运行 DJ 效果与串烧；三项实测都通过后才能部署。真实推理验证另用 `benchmark_controls.py --runtime ... --installed-app ... --output ...`，结果目录须留在 Git 外。
+后端验证：用现有音乐环境的 Python 运行 `dual-version/test_controls.py`、`test_instrumental.py`、`test_adjust.py`、`test_versions.py`、`test_voice.py`、`test_speed_variants.py`、`test_styles.py`、`test_kid_voice.py`、`test_dj.py`、`test_suite.py` 和 `test_all_styles.py`（纯音乐、变调、换声、童声、DJ 与组曲测试使用 runtime 中的 FFmpeg，先设置 `SING_LOCAL_TEST`；中文 Windows 上另设 `PYTHONUTF8=1`，否则 `test_voice.py` 读取换声脚本的中文输出时会按 GBK 解码失败；`test_voice.py` 用接口相同的替代引擎，不需要安装 Seed-VC）；运行 `test_backend.py` 前设置 `SING_LOCAL_TEST` 为本机 runtime 目录。变调变速的真实推理验证：`dual-version/benchmark_adjust.py --runtime ... --output <Git 外目录> --validation dual-version/VALIDATION-v1.3.0.json`，可加 `--source <本机纯伴奏 WAV>`；全部通过后才会把该版本验证标记为通过，部署脚本以此为准。后者需要既有示例音频与模型文件来验证可用性，推理本身使用测试进程。换声的真实推理验证：`dual-version/benchmark_voice.py --runtime ... --output <Git 外目录> --source <本机有人声的歌曲> --start <演唱段落秒数> --validation dual-version/VALIDATION-v1.4.0.json`（可加 `--lyrics-file`）。v1.4.0 需要 `benchmark_adjust.py` 与 `benchmark_voice.py` 都写入同一验证文件并通过。v1.6.0 另需 `dual-version/benchmark_variety.py --runtime ... --output <Git 外目录> --source <本机歌曲或纯伴奏> --validation dual-version/VALIDATION-v1.6.0.json`：用真实 YuE2 生成每组一种新风格、四种新演唱者（童声含本机童声处理）、三个组曲部分与组曲，并运行 DJ 效果与串烧；三项实测都通过后才能部署。v1.7.0 用同样三项，写入 `dual-version/VALIDATION-v1.7.0.json`；`benchmark_variety.py` 另外用占位歌词让 4 种新说唱风格各说唱一次。真实推理验证另用 `benchmark_controls.py --runtime ... --installed-app ... --output ...`，结果目录须留在 Git 外。
 
 更新现有安装：先完成构建和验证，再使用 `dual-version/deploy-release.ps1 -AppRoot <现有 sing-studio 目录>`。脚本拒绝活动队列，备份应用代码和前端，保留用户数据，并启动原有本机入口。仅用于已安装应用，不创建或下载推理环境；换声引擎由 `seedvc-install.ps1` 单独安装，更新应用不会改动它。
 

@@ -53,6 +53,8 @@
 !/dual-version/test_suite.py
 !/dual-version/benchmark_variety.py
 !/dual-version/VALIDATION-v1.6.0.json
+!/dual-version/test_all_styles.py
+!/dual-version/VALIDATION-v1.7.0.json
 !/sing-studio-batch-preview/
 /sing-studio-batch-preview/*
 !/sing-studio-batch-preview/src/

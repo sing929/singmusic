@@ -1,3 +1,42 @@
+# Sing Studio v1.7.0 · 2026-10-22
+
+## 本次交付
+
+- 用户确认需求（2026-10-22，两轮问答）：要“一次下载全部类型的风格”——确认含义是**一次生成全部风格**（不是打包下载；ZIP 下载按钮用户明确不要）；做成“全部风格”开关（统一 + 逐首），全部风格时自动不生成变速版本。说唱“缺少”的原因是用户本机应用仍是 v1.5.0（v1.6.0 已合并但未部署）；另外要更多说唱风格：选了 Rap、Melodic Rap、Drill、Emo Rap（没选中文 / 粤语说唱与马来说唱）。发布方式：v1.7.0 分支 + PR，只推送 Git，本次不做应用电脑实测与部署。
+- 风格目录 `styles.json`：说唱组改为 Rap、Hip-hop、Trap、Boom Bap、Melodic Rap、Drill、Emo Rap、Phonk，新增 4 种都带“全新演绎 + 自由旋律”智能默认，共 55 种。默认 20 种的第 14、17、20 项改为 Rap、Melodic Rap、Drill。
+- `generation_controls.py`：`ALL_STYLES`（按组顺序）、`MAX_SONG_JOBS`（全部风格 + 组曲 = 58，用于种子上限）、`version_letter`（A–Z 后接 AA、AB …）。`LETTERS` / `MAX_VERSIONS` 不变（换声开关仍是 A–T 20 个）。
+- `voice_swap.for_all_styles`：全部风格的歌曲只有全部 20 个版本开关都打开时才换声（界面显示一个开关，同时打开或关闭 20 个）。
+- `service.py`：设置 `all_styles`（布尔，默认 false，旧值无效回退）、逐首 `track.all_styles`（布尔或 null 跟随）；`expand_item` 在 `all_styles` 时按 `ALL_STYLES` 展开（忽略请求里的 variants）、`speed_variants=False`、换声用 `for_all_styles`、不受 20 版本与“组曲后超过 20”的限制；版本字母改用 `version_letter`。
+- 界面 `App.jsx` / `styles.css`：统一设置“全部风格”开关、分组风格清单与用时估算（开启时版本数停用，各版本风格、按组填充与各版本补充要求隐藏）；换声面板单开关（`VoiceControls` 的 `every`）；变速面板注明不生成；逐首“全部风格”下拉，开启时版本数停用并显示 A–BC 说明；底部、确认对话框（“全部风格”一行与用时提醒）、使用说明；“我的作品”版本排序改为先按字母长度（A … Z、AA …）。顺带把“每批最多 100 首”提示里的队列容量 500 改为 2000。
+- `benchmark_variety.py`：新增 4 次有词说唱生成（Rap、Melodic Rap、Drill、Emo Rap，占位歌词、自由旋律，检查歌词与 `cot=off` 送到引擎），约多 4 分钟。
+- 版本源、package / lock、README、CHANGELOG 同步为 1.7.0；`.gitignore` 允许清单加入 `test_all_styles.py` 与 `VALIDATION-v1.7.0.json`。`deploy-release.ps1` 文件清单无需变化（没有新模块）。
+
+## 本次验证（开发电脑 Xeon + GTX 1070，无 YuE2 / Seed-VC）
+
+- 前端生产构建与 4 项打包测试通过。后端 78 项回归通过：原有 70 项（`test_versions.py` 的第 20 个默认风格改为 Drill）与新增 `test_all_styles.py` 8 项。仍须设 `PYTHONUTF8=1`。
+- 隔离浏览器实际操作（替代安装 `rt-voice`，队列暂停）：开启“全部风格”后服务端保存且刷新后保留；55 种风格分组清单（说唱 8 种）；换声单开关；确认对话框“1 首 → 58 个完整版本 + 1 首管弦组曲”；入队 58 个任务（A R&B … BC Music Box，组曲 BD–BF），Rap / Melodic Rap / Drill / Emo Rap 为 W / AA / AB / AC、全新演绎 + 自由旋律，变速版本 0 个，测试任务已移除；逐首改为“按版本数”后恢复该曲 2 个版本；375 px 宽无横向滚动；无控制台错误；替代安装的设置已恢复。
+- **未完成：应用电脑上的真实生成与试听**（尤其新说唱风格是否真的“说唱”而不是唱，以及全部风格一整批的实际用时）。`VALIDATION-v1.7.0.json` 为 `passed: false`，所需基准仍为 `adjust`、`voice`、`variety`，三项都通过后才能用 `deploy-release.ps1` 部署。v1.3.0–v1.6.0 的应用电脑实测同样尚未完成；部署 v1.7.0 会一并带上 v1.6.0 的全部内容。
+
+## 在应用电脑（i7-14700F + RTX 5070）上完成
+
+1. 先按 v1.4.0 一节完成 Seed-VC 的下载与安装（如尚未完成）。
+2. 拉取合并后的 main（或本分支），在 `sing-studio-batch-preview/` 运行 `npm ci`、`npm run build`、`npm run test:sites`。
+3. 回归：用 ace-env 的 Python、设置 `SING_LOCAL_TEST` 与 `PYTHONUTF8=1` 后运行全部 12 个 `test_*.py`。
+4. 实测（输出目录放在 Git 外）：`benchmark_adjust.py`、`benchmark_voice.py`（参数同 v1.4.0 一节）与 `benchmark_variety.py`（参数同 v1.6.0 一节，约 20 分钟），都加 `--validation dual-version\VALIDATION-v1.7.0.json`。
+5. 三项都通过后（`passed: true`），确认队列空闲，用 `dual-version\deploy-release.ps1 -AppRoot <现有 sing-studio 目录>` 更新应用。
+6. 试听：4 种新说唱风格的有词结果（是否说唱原歌词、节奏感），再选一首短歌开启“全部风格”跑一整批，记录实际用时与听感到本文件。
+
+## 已知限制
+
+- 全部风格每首 55 个完整生成，按约 3.5 分钟生成一个 3 分钟版本估算约 3 小时；队列容量 2000 约容纳 36 首。全部风格只用统一要求，没有各版本补充要求，换声只能全部开或全部关。
+- 说唱风格仍是给 YuE2 的文字要求，模型不一定真的说唱，须试听确认。
+
+## Git
+
+- 本分支 `feature/all-styles-rap-v1.7.0` 基于 main（v1.6.0 合并提交 `6b3ac11`），以 main 为目标开 PR；合并后打 `v1.7.0` 标签。不得强制推送或覆盖标签。
+
+---
+
 # Sing Studio v1.6.0 · 2026-10-21
 
 ## 本次交付
