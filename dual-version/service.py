@@ -1,5 +1,5 @@
 """Single-user offline music studio; loopback HTTP and serialized local jobs."""
-import json, math, os, re, secrets, subprocess, threading, time, traceback, uuid, wave
+import datetime, json, math, os, re, secrets, subprocess, threading, time, traceback, uuid, wave
 from pathlib import Path
 from urllib.parse import urlsplit, unquote, quote
 from http.server import ThreadingHTTPServer
@@ -8,6 +8,7 @@ import audio_adjust
 import voice_swap
 import kid_voice
 import dj_tools
+import release_pack
 from generation_controls import RELEASE, VERSION, CONTROL_VERSION, DEFAULT_STRENGTH, LEGACY_INSTRUCTIONS, validate_controls, text_field, build_caption, effective_controls, output_name
 from generation_controls import MAX_VERSIONS, LEGACY_VERSIONS, LETTERS, version_count, text_list, default_styles
 from generation_controls import SUITE, SMART_FIELDS, apply_smart_defaults, validate_suite
@@ -499,6 +500,215 @@ def cancel(identifier):
         meta['state']='cancelled';meta['finished_at']=time.time();save(directory/'job.json',meta)
         return meta
 
+# Releases: an EP or album of finished works for one distributor, packed into a local folder
+# (store WAVs, cover, lyrics, AI-use answers, upload checklist). Nothing is uploaded from here.
+COVER_LOCK=threading.Lock()
+SUBMITTED_FIELDS=('notes','upc')
+
+def release_path(identifier):
+    if not isinstance(identifier,str) or not re.fullmatch('[0-9a-f]{32}',identifier):raise ValueError('找不到这个发行。')
+    return DATA/'releases'/identifier
+
+def stored_release(identifier):
+    value=read(release_path(identifier)/'release.json')
+    if not value:raise ValueError('找不到这个发行。')
+    return value
+
+def all_releases():
+    folder=DATA/'releases'
+    return sorted((r for p in folder.iterdir() if p.is_dir() and (r:=read(p/'release.json'))),key=lambda r:r['created_at']) if folder.is_dir() else []
+
+def root_jobs(job,seen=None):
+    """The YuE2 generations a finished work is made from: itself, the work a key/tempo or DJ edit came from,
+    or every part of a mix or suite."""
+    seen=set() if seen is None else seen
+    if not job or job['id'] in seen:return []
+    seen.add(job['id'])
+    if not job.get('kind'):return [job]
+    return [root for parent in (job.get('parent_ids') or [job.get('parent_id')]) if parent for root in root_jobs(read(JOBS/parent/'job.json'),seen)]
+
+def ancestors(job):
+    found=[];parent=job.get('parent_id')
+    while parent and parent not in found and len(found)<50:
+        found.append(parent);parent=(read(JOBS/parent/'job.json') or {}).get('parent_id')
+    return found+list(job.get('parent_ids') or [])
+
+def work_lyrics(job,roots):
+    """Lyrics the work was sung with: the ones given to YuE2, else those recognized on this computer.
+    A mix of several songs has none."""
+    if job.get('kind')=='mix' or not roots:return {}
+    root=roots[0];given=root.get('config',{}).get('lyrics','')
+    if given.strip():return {'text':given,'source':'provided'}
+    recognized=read(JOBS/root['id']/'lyrics.json',{})
+    return {'text':recognized.get('text',''),'source':recognized.get('source','')}
+
+def release_entries(release):
+    entries=[]
+    for t in release.get('tracks',[]):
+        directory=JOBS/t['job_id'];job=read(directory/'job.json')
+        wav=result_file(directory,read(directory/'result.json',{}),'result',('.wav',)) if job else None
+        if not job or job.get('state')!='completed' or job.get('hidden') or wav is None or not wav.is_file():
+            entries.append({'track':t,'job':None});continue
+        roots=root_jobs(job)
+        seconds=float(read(directory/'result.json',{}).get('checks',{}).get('result',{}).get('seconds') or job['duration'])
+        entries.append({'track':t,'job':job,'roots':[r.get('config',{}) for r in roots],'wav':wav,'seconds':seconds,
+            'lyrics':work_lyrics(job,roots),'parents':ancestors(job)})
+    return entries
+
+def public_release(release,others):
+    entries=release_entries(release)
+    facts=release_pack.review(release,entries,others)
+    return {**release,'review':facts,'cover_key':release_pack.cover_key(release),'pack_path':str(release_path(release['id'])/'pack'),
+        'entries':[{'job_id':e['track']['job_id'],'missing':e['job'] is None,'output_name':e['job'] and job_output_name(e['job']),
+            'kind':e['job'] and e['job'].get('kind'),'seconds':e.get('seconds'),'credits':e['job'] and release_pack.credits(e['roots']),
+            'lyrics_source':(e.get('lyrics') or {}).get('source','') if (e.get('lyrics') or {}).get('text','').strip() else ''} for e in entries]}
+
+def public_releases():
+    values=all_releases();shown=[r for r in values if not r.get('hidden')]
+    return [public_release(r,shown) for r in values]
+
+def release_options():
+    return {'distributors':release_pack.DISTRIBUTORS,'languages':release_pack.LANGUAGES,'genres':release_pack.GENRES,
+        'credits':release_pack.CREDITS,'release_ai':release_pack.RELEASE_AI,'max_tracks':release_pack.MAX_TRACKS}
+
+def release_settings():
+    """Where finished packs are also copied, one folder per EP, for automation such as n8n ('' = off)."""
+    folder=read(DATA/'release-settings.json',{}).get('export_folder','')
+    return {'export_folder':folder if isinstance(folder,str) else ''}
+
+def save_release_settings(payload):
+    folder=payload.get('export_folder','')
+    if not isinstance(folder,str) or len(folder)>200:raise ValueError('导出文件夹无效。')
+    folder=folder.strip().strip('"')
+    if folder:
+        if not Path(folder).is_absolute():raise ValueError('请填写完整路径，例如 D:\\Sing Studio EP。')
+        try:Path(folder).mkdir(parents=True,exist_ok=True)
+        except OSError:raise ValueError('无法创建这个文件夹，请换一个路径。') from None
+    with LOCK:save(DATA/'release-settings.json',{'export_folder':folder})
+    return release_settings()
+
+def editable(release,fields=()):
+    if release.get('build',{}).get('state')=='building':raise ValueError('发行包正在生成，请稍候再修改。')
+    if release.get('status')=='submitted' and not set(fields)<=set(SUBMITTED_FIELDS):raise ValueError('这个发行已提交到平台，只能修改备注和 UPC；需要改动时先“重新编辑”。')
+
+def save_release(release,stale=True):
+    """Any change to a packed release makes its pack out of date until it is made again."""
+    if stale and release.get('status')=='ready':
+        release['status']='draft';release['build']={**release.get('build',{}),'state':'stale'}
+    release['updated_at']=time.time()
+    save(release_path(release['id'])/'release.json',release)
+    return release
+
+def create_release(payload):
+    with LOCK:
+        values=all_releases();last=values[-1] if values else {}
+        # Each EP goes to one distributor; a new release starts on the one the last release did not use.
+        distributor=payload.get('distributor') or ('offstep' if last.get('distributor')=='ditto' else 'ditto')
+        value={'id':uuid.uuid4().hex,'created_at':time.time(),'status':'draft','hidden':False,'title':'','subgenre':'','release_date':'','upc':'','notes':'',
+            'tracks':[],'cover_seed':secrets.randbelow(10**9),'copyright_year':datetime.date.today().year,
+            **{key:last.get(key,default) for key,default in (('artist',''),('credit_name',''),('label',''),('genre',''),('language','zh'),('copyright_holder',''))}}
+        value=release_pack.apply(value,{'distributor':distributor})
+        release_path(value['id']).mkdir(parents=True)
+        save_release(value)
+    if payload.get('job_ids'):return add_release_tracks(value['id'],payload['job_ids'])
+    return public_release(value,[r for r in all_releases() if not r.get('hidden')])
+
+def add_release_tracks(identifier,ids):
+    """Add finished works with suggested store names: the song's title and a mix version from its style and edits."""
+    if not isinstance(ids,list) or not 1<=len(ids)<=release_pack.MAX_TRACKS:raise ValueError(f'请选择 1–{release_pack.MAX_TRACKS} 个作品。')
+    with LOCK:
+        release=stored_release(identifier);editable(release)
+        present={t['job_id'] for t in release['tracks']}
+        tracks=list(release['tracks'])
+        for job_id in dict.fromkeys(ids):
+            if job_id in present:continue
+            job,_,_=finished_work(job_id,'加入发行')
+            if job.get('hidden'):raise ValueError('已删除的作品不能加入发行。')
+            tracks.append({'job_id':job_id,'title':release_pack.song_title(job['title']),'version':release_pack.version_text(job),'explicit':False,'isrc':'','snippet':None})
+        release=release_pack.apply(release,{'tracks':tracks})
+        if not release['title'] and tracks:release['title']=tracks[0]['title']
+        save_release(release)
+        return public_release(release,[r for r in all_releases() if not r.get('hidden')])
+
+def update_release(identifier,payload):
+    with LOCK:
+        release=stored_release(identifier);editable(release,payload)
+        if 'tracks' in payload:
+            # Tracks are only reordered, renamed or removed here; new works come in through add_release_tracks.
+            current={t['job_id'] for t in release['tracks']}
+            if not isinstance(payload['tracks'],list) or any(not isinstance(t,dict) or t.get('job_id') not in current for t in payload['tracks']):raise ValueError('请用“加入作品”添加新的曲目。')
+        release=release_pack.apply(release,payload)
+        # Notes are not part of the pack; everything else is.
+        save_release(release,stale=release.get('status')!='submitted' and set(payload)!={'notes'})
+        return public_release(release,[r for r in all_releases() if not r.get('hidden')])
+
+def build_release(identifier,token):
+    """Make the pack outside the lock (FFmpeg exports take a while); a newer build or an edit wins."""
+    try:
+        with LOCK:
+            release=stored_release(identifier);entries=release_entries(release)
+            facts=release_pack.review(release,entries,[r for r in all_releases() if not r.get('hidden')])
+            if facts['problems']:raise ValueError(facts['problems'][0])
+        record=release_pack.build(release,entries,facts,release_path(identifier)/'pack',TEST/'bin/ffmpeg.exe',VERSION)
+        state={'state':'done','finished_at':time.time(),**record}
+        folder=release_settings()['export_folder']
+        if folder:
+            # A failed copy keeps the pack; the release page shows why the EP folder is missing.
+            try:state['export_path']=str(release_pack.export(release_path(identifier)/'pack',folder,release['title'],identifier,release.get('export_path')))
+            except (OSError,RuntimeError) as error:state['export_error']=f'未能复制到导出文件夹：{error}'
+    except Exception as error:
+        if not isinstance(error,(ValueError,RuntimeError,OSError,subprocess.CalledProcessError)):
+            with (DATA/'server-errors.log').open('a',encoding='utf-8') as log:log.write(traceback.format_exc())
+        state={'state':'failed','error':str(error) if isinstance(error,(ValueError,RuntimeError)) else '发行包未完成：音频导出或写入文件失败，请重试。'}
+    with LOCK:
+        release=stored_release(identifier)
+        if release.get('build',{}).get('token')!=token:return
+        release['build']={**state,'token':token};release['status']='ready' if state['state']=='done' else 'draft'
+        # The EP folder automation should read; kept on the release so a renamed EP replaces its old copy.
+        if state.get('export_path'):release['export_path']=state['export_path']
+        save_release(release,stale=False)
+
+def release_action(identifier,action,payload):
+    with LOCK:
+        release=stored_release(identifier)
+        if action=='cover':
+            editable(release);release['cover_seed']=secrets.randbelow(10**9);save_release(release)
+        elif action=='build':
+            editable(release)
+            if release.get('status')=='submitted':raise ValueError('这个发行已提交。')
+            problems=release_pack.review(release,release_entries(release),[r for r in all_releases() if not r.get('hidden')])['problems']
+            if problems:raise ValueError(problems[0])
+            token=uuid.uuid4().hex;release['build']={'state':'building','started_at':time.time(),'token':token};save_release(release,stale=False)
+            threading.Thread(target=build_release,args=(identifier,token),daemon=True).start()
+        elif action=='open':
+            folder=release_path(identifier)/'pack'
+            if not folder.is_dir():raise ValueError('还没有生成发行包。')
+            try:os.startfile(folder)
+            except (AttributeError,OSError):raise ValueError('无法在这台电脑上打开文件夹，请手动打开：'+str(folder)) from None
+        elif action=='submitted':
+            if release.get('status')!='ready':raise ValueError('请先生成发行包，在平台网站提交后再标记。')
+            release=release_pack.apply(release,{k:payload[k] for k in SUBMITTED_FIELDS if k in payload})
+            release.update(status='submitted',submitted_at=time.time());save_release(release,stale=False)
+        elif action=='reopen':
+            if release.get('status')!='submitted':raise ValueError('这个发行还没有提交。')
+            release['status']='draft';release['build']={**release.get('build',{}),'state':'stale'};save_release(release,stale=False)
+        elif action in ('remove','restore'):
+            if release.get('build',{}).get('state')=='building':raise ValueError('发行包正在生成，请稍候。')
+            release['hidden']=action=='remove';save_release(release,stale=False)
+        else:raise ValueError('不支持的操作。')
+        return public_release(release,[r for r in all_releases() if not r.get('hidden')])
+
+def release_cover(identifier):
+    """The current cover preview; drawn once per title, artist and cover choice, older drafts removed."""
+    release=stored_release(identifier);folder=release_path(identifier);key=release_pack.cover_key(release)
+    path=folder/f'cover-{key}.jpg'
+    with COVER_LOCK:
+        if not path.is_file():
+            release_pack.make_cover(path,release.get('title') or '发行名称',release.get('artist') or '艺人名',release.get('cover_seed',0))
+            for old in folder.glob('cover-*.jpg'):
+                if old!=path:old.unlink(missing_ok=True)
+    return path
+
 class Handler(server.Handler):
     def json(self,value,status=200,head=False):
         payload=json.dumps(value,ensure_ascii=False).encode('utf-8')
@@ -516,8 +726,14 @@ class Handler(server.Handler):
             with LOCK:
                 values=[public_track(SAMPLE)]+[public_track(t) for p in TRACKS.iterdir() if (t:=read(p/'track.json'))]
                 from yue2_engine import available
-                self.json({'token':TOKEN,'tracks':values,'jobs':jobs(),'running':RUNNING,'engines':{'ace':True,'yue2':available(),'voice':voice_swap.available()},'settings':settings(),'release':RELEASE},head=head)
+                self.json({'token':TOKEN,'tracks':values,'jobs':jobs(),'running':RUNNING,'engines':{'ace':True,'yue2':available(),'voice':voice_swap.available()},'settings':settings(),'release':RELEASE,
+                    'releases':public_releases(),'release_options':release_options(),'release_settings':release_settings()},head=head)
             return
+        match=re.fullmatch(r'/releases/([0-9a-f]{32})/cover\.jpg',route)
+        if match:
+            try:path=release_cover(match[1])
+            except (ValueError,OSError,ImportError):self.send_error(404);return
+            self.send_file(path,head);return
         match=re.fullmatch(r'/media/(sample|[0-9a-f]{32})',route)
         if match:
             try:path=Path(track(match[1])['source'])
@@ -541,7 +757,7 @@ class Handler(server.Handler):
             start=int(match[1]);end=min(end,int(match[2]) if match[2] else end)
             if start>end:self.send_error(416);return
             status=206
-        self.send_response(status);self.send_header('Content-Type','audio/mpeg' if path.suffix=='.mp3' else 'audio/wav');self.send_header('Accept-Ranges','bytes')
+        self.send_response(status);self.send_header('Content-Type',{'.mp3':'audio/mpeg','.jpg':'image/jpeg'}.get(path.suffix,'audio/wav'));self.send_header('Accept-Ranges','bytes')
         self.send_header('Content-Length',str(end-start+1));self.send_header('Cache-Control','no-cache')
         if download_name:self.send_header('Content-Disposition',"inline; filename*=UTF-8''"+quote(download_name,safe=''))
         if status==206:self.send_header('Content-Range',f'bytes {start}-{end}/{size}')
@@ -641,6 +857,13 @@ class Handler(server.Handler):
             if route=='/api/batch':self.json(create_batch(payload),201);return
             if route=='/api/jobs':self.json(create_job(payload),201);return
             if route=='/api/mix':self.json(create_mix(payload),201);return
+            if route=='/api/releases':self.json(create_release(payload),201);return
+            if route=='/api/release-settings':self.json(save_release_settings(payload));return
+            match=re.fullmatch(r'/api/releases/([0-9a-f]{32})(?:/(tracks|cover|build|open|submitted|reopen|remove|restore))?',route)
+            if match:
+                if not match[2]:self.json(update_release(match[1],payload));return
+                if match[2]=='tracks':self.json(add_release_tracks(match[1],payload.get('job_ids')));return
+                self.json(release_action(match[1],match[2],payload));return
             if route=='/api/queue/remove':self.json({'jobs':change_jobs(payload.get('ids'),'remove')});return
             match=re.fullmatch(r'/api/jobs/([0-9a-f]{32})/(cancel|retry|remove|restore|favorite|adjust|dj)',route)
             if match:
@@ -694,6 +917,9 @@ def main():
             save(directory/'job.json',job)
             save(directory/'error.json',{'error':'上次本机运行中断。'})
             finish_attempt(directory,1)
+    for release in all_releases():
+        if release.get('build',{}).get('state')=='building':
+            release['build']={'state':'failed','error':'上次生成发行包时本机服务中断，请重新生成。'};save_release(release,stale=False)
     threading.Thread(target=worker,daemon=True).start()
     threading.Thread(target=worker,args=('adjust',),daemon=True).start()
     if args.desktop:server.desktop()

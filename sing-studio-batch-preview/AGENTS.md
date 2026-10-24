@@ -63,3 +63,9 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 - Pre-generation only, on the generated vocals: shared setting with per-song override, one switch per version (A–J, following the version count), plus an octave rule. No voice swap re-edit on finished works.
 - Not used for preserve-original or instrumental songs. Remind users to swap only voices they have rights to.
 - Local Seed-VC in its own environment on the RTX 5070 app PC; the user downloads the bundle on another PC with internet and installs it offline. Nothing is downloaded on the development PC and no audio or lyrics are uploaded.
+
+## Confirmed release brief — 2026-10-24
+- New "发行上架" page: finished works become a single / EP / album for Ditto Music or OFFstep. Songs are the user's own originals; only versions in the user's own voice are meant for release.
+- Each EP goes to exactly one distributor (different EPs to each); the same recording must never be released through both.
+- Auto-name tracks (song title + style mix version) and auto-generate a 3000x3000 cover with only the release title and artist; the user reviews before upload. The user picks the release date each time. "Post" means submitting to stores only, no social media.
+- The app makes a local release pack; the upload happens on the distributor's website (by the user or Claude in Chrome). Sign-in, CAPTCHA, terms, payment and the final Submit stay with the user.

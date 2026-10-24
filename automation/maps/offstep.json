@@ -1,0 +1,9 @@
+{
+  "name": "OFFstep",
+  "verified": false,
+  "note": "No field map yet: the upload form has not been seen. The helper only opens the site in the upload Chrome; add steps here (same format as ditto.json) after the first signed-in look.",
+  "start_url": "https://offstep.com/",
+  "login_url": "https://offstep.com/",
+  "login_patterns": ["login", "signin", "sign-in"],
+  "steps": []
+}

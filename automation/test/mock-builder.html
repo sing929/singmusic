@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Mock release builder</title></head>
+<body>
+  <!-- A stand-in for a distributor's release builder, used only by the tests. -->
+  <button id="create">Create Release</button>
+  <form id="builder" hidden>
+    <label>Release title <input id="title"></label>
+    <label>Primary artist <input id="artist"></label>
+    <label>Record label <input id="label"></label>
+    <label>Primary genre <select id="genre"><option>Pop</option><option>Dance</option></select></label>
+    <label>Language <select id="language"><option>English · 英语</option><option>Chinese (Mandarin) · 中文</option></select></label>
+    <label>Artwork <input id="art" type="file" accept="image/jpeg"></label>
+    <label>Audio <input id="audio" type="file" accept="audio/wav" multiple></label>
+    <fieldset><legend>AI use</legend>
+      <label><input type="radio" name="ai" value="none"> No AI</label>
+      <label><input type="radio" name="ai" value="partially"> Partially AI</label>
+    </fieldset>
+    <div id="tracks"></div>
+    <label>Release date <input id="date"></label>
+    <button type="button" id="submit">Submit release</button>
+  </form>
+  <p id="state">draft</p>
+  <script>
+    document.getElementById('create').onclick = () => { document.getElementById('builder').hidden = false; };
+    document.getElementById('submit').onclick = () => { document.getElementById('state').textContent = 'SUBMITTED'; };
+    document.getElementById('audio').onchange = (e) => {
+      const box = document.getElementById('tracks');
+      box.innerHTML = '';
+      [...e.target.files].forEach((f, i) => {
+        const row = document.createElement('div');
+        row.innerHTML = `<span>${f.name}</span> <button type="button">Edit</button>`;
+        row.querySelector('button').onclick = () => {
+          document.getElementById('editor')?.remove();
+          const editor = document.createElement('div');
+          editor.id = 'editor';
+          editor.dataset.track = i + 1;
+          editor.innerHTML = '<label>Track title <input class="t"></label><label>Track mix version <input class="v"></label><label>Lyrics <textarea class="l"></textarea></label>';
+          editor.querySelectorAll('input,textarea').forEach((x) => x.oninput = () => { row.dataset[x.className] = x.value; });
+          row.after(editor);
+        };
+        box.append(row);
+      });
+    };
+  </script>
+</body>
+</html>

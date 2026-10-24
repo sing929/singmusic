@@ -1,3 +1,47 @@
+# Sing Studio v1.8.0 · 2026-10-24
+
+## 本次交付
+
+- 用户确认需求（2026-10-24，三轮问答 + 认可 Ditto 流程）：作品编辑完成后发行到音乐平台。歌曲都是用户本人原创，只发行用户本人声音的版本；平台为 **OFFstep 与 Ditto Music，每个 EP 只走其中一个**（用户最初想两个平台发同一个 EP，告知重复发行会被 Content ID / 平台判重下架后改为“不同 EP 各走一个”）；发行形式是同一首歌几个版本组成 EP / 专辑；“发布”只指提交到商店（不发社交媒体）；自动命名 + 自动生成封面、上传前由用户确认；做成 Sing Studio 里的“发行上架”页；歌曲在应用电脑上；每次由用户选发行日期。用户要求“全自动上传”：已说明两个平台都没有公开上传 API，只能在用户已登录的浏览器里由 Claude 按清单代填；登录、验证码、同意条款、付款与最后的 Submit 必须由用户本人完成。
+- Ditto 规则（2026-10-24 读取帮助中心）：音频 WAV / MP3、至少 16-bit / 44.1 kHz 立体声、避免长段静音；封面 JPG、正方形、建议 3000 × 3000、RGB、≤ 10 MB，只能有艺人名与发行名称且须与资料一致；歌词每行一句、段落间空行、行尾无标点、重复段落写全；版本写在 Track mix version；Release Builder 第 2 步声明 AI（No / Partially / Entirely AI，Partially 时逐首 Track Credits 设 No / Partly / Fully AI，署名填本人而不是 AI 工具）；建议至少提前两周；ISRC / UPC 可由平台生成。Ditto 禁止声音克隆与模仿，不接受刷量式重复内容。OFFstep 的上传页面没有核对。
+- `release_pack.py`（新）：命名（`title_case`、`song_title`、`style_version`、`version_text`）、`credits` / `release_ai`、`format_lyrics`、`release_type`、`apply`（字段校验）、`review`（问题 / 提醒 / 发行类型 / AI 声明）、`make_cover`（Pillow，Windows 字体 msyhbd / msyh，找不到时 Arial 或默认字体）、`export_wav`（FFmpeg `aresample=44100:dither_method=triangular`、`pcm_s16le`、去标签）、`checklist` 与 `build`（写入 `pack.new` 后整体替换）。
+- `service.py`：发行存在 `data/releases/<id>/release.json`；`root_jobs`（作品来自哪些 YuE2 生成：变调变速 / DJ 版追溯父作品，串烧与组曲取全部部分）、`work_lyrics`、`release_entries`、`public_release`；新建 / 加入作品 / 修改（曲目只能重排、改名、移出，新作品走 `tracks` 路由）/ 后台生成（令牌防止旧的生成覆盖新状态）/ 打开文件夹（`os.startfile`）/ 已提交 / 重新编辑 / 删除 / 恢复；封面预览按 `cover_key` 缓存为 `cover-<key>.jpg`；`send_file` 支持 `image/jpeg`；启动时把中断的生成标为失败。
+- 界面 `App.jsx` / `styles.css`：侧栏“发行上架”（未提交发行数）、发行标签列表、资料表单（平台、名称、艺人、署名真名、厂牌、主 / 副风格带建议列表、语言、版权、日期、UPC）、封面预览与“换一张封面”、曲目（曲名、版本、露骨歌词、上移 / 下移 / 移出、商店显示名、来源作品、AI 声明标签、歌词来源）、问题与提醒、发行包（状态、路径、文件与检查结果、生成 / 打开文件夹 / 已在平台提交 / 重新编辑 / 删除）、备注；“加入作品”对话框（按歌曲分组，已在其他发行的作品不可选）与“已提交”对话框（可填 UPC）。改动即时显示、停顿 0.45 秒后保存，生成前先保存。
+- `deploy-release.ps1` 文件清单加入 `release_pack.py`；`.gitignore` 允许 `release_pack.py`、`test_release.py`、`VALIDATION-v1.8.0.json`；版本源、package / lock、README、CHANGELOG 同步为 1.8.0；`sing-studio-batch-preview/AGENTS.md` 记录本次确认的需求。
+
+- n8n 自动上传（同日第二轮问答）：用户比较 ComfyUI 与 n8n 后选 n8n，平台仍用 Ditto / OFFstep，自动化做到 Submit 前、由用户本人点 Submit；Sing Studio 自动把编辑好的歌曲按 EP 名放进文件夹，n8n 读这个文件夹上传；只用 n8n 表单（不发 Telegram / 邮件）；n8n 装在应用电脑。说明过：Ditto / OFFstep 没有上传 API，n8n 只能驱动网页；完全无人值守需要有 API 的平台（如 LabelGrid，约 119 美元 / 月起，未核实）。
+- EP 导出文件夹：`service.py` 的 `release_settings` / `save_release_settings`（存 `data/release-settings.json`），`build_release` 生成后调用 `release_pack.export`，失败只记 `export_error` 不影响发行包。界面在“发行上架”顶部加导出文件夹输入框，发行包区域显示 EP 文件夹路径。
+- `automation/`（新）：见其中 README 的安装步骤。设计要点：n8n 2.x 默认禁用 Execute Command，须设 `NODES_EXCLUDE="[]"`；助手脚本每次输出一行 JSON、正常结束（不用 `process.exit`，否则 Windows 上 Node 会以 `UV_HANDLE_CLOSING` 断言崩溃，n8n 报错）；上传用的 Chrome 用 `--remote-debugging-port=9333 --user-data-dir=%LOCALAPPDATA%\SingStudio\upload-chrome` 独立启动，脚本只连接、结束时断开，表单保持打开；附件用 CDP `DOM.setFileInputFiles` 交路径（Playwright 的 `setInputFiles` 经 CDP 连接时超过 50 MB 会拒绝）。
+
+## 本次验证（开发电脑 Xeon + GTX 1070，无 YuE2 / Seed-VC）
+
+- 前端生产构建与 4 项打包测试通过。后端 86 项回归通过：原有 78 项与新增 `test_release.py` 8 项（真实 FFmpeg 导出、Pillow 封面、EP 导出文件夹）。`automation` 3 项 Node 测试通过（无界面 Chrome）。
+- n8n 端到端（n8n 2.44.6、Node 24，临时安装在开发电脑，`import:workflow` + `publish:workflow`，未建账户）：替代安装设置导出文件夹并重新生成测试发行 → 表单第 1 页 → 第 2 页列出 “夏天的风 Summer Wind · Ditto Music · 3 首 · 2026-11-20” → 助手在无界面的上传 Chrome 里用 Ditto 映射填写模拟上传页（22 项完成，模拟页没有的 5 项列为没找到，含一个 70.6 MB 的 WAV）→ 第 3 页显示结果 → 选“已点 Submit”并填 UPC → 结束页“已记录提交”，EP 文件夹有 `submitted.json`，替代安装的发行变为已提交、UPC 已存。另走一遍“先保留”分支。助手结束后 Chrome 里的表单仍打开、已填写、状态仍为未提交。测试用的 n8n、Chrome 与配置已清理；替代安装里的测试发行现为“已提交”。仍须设 `PYTHONUTF8=1`。
+- 隔离浏览器实际操作（替代安装 `rt-voice`，队列暂停）：新建发行（Ditto Music）→ 加入作品对话框按歌曲分组 → 加入 3 个作品，自动名称为 Demo Song (Lo-fi Version) / (Lo-fi Version, Slowed) / (Jazz Version)，显示 AI 声明标签；填写前列出缺少的资料，输入发行名称与艺人名后封面重画；生成发行包（3 个 44.1 kHz / 16-bit WAV、封面、metadata、上传清单），显示文件、峰值与试听起点；375 px 宽单列、无横向滚动；无控制台错误。替代安装的 `data/releases/` 里留有这个测试发行。
+- **未完成：** 用发行包在 Ditto / OFFstep 网站真正上传一次（Release Builder 实际字段顺序、OFFstep 表单；`maps/ditto.json` 仍是 `verified: false`）；应用电脑上安装 n8n 并导入流程；应用电脑上的真实生成与试听。`VALIDATION-v1.8.0.json` 为 `passed: false`，所需基准仍为 `adjust`、`voice`、`variety`。
+
+## 在应用电脑（i7-14700F + RTX 5070）上完成
+
+1. 与 v1.7.0 相同：Seed-VC（如未安装）、`npm ci` / `npm run build` / `npm run test:sites`、全部 13 个 `test_*.py`（应用电脑的 ace-env 须有 Pillow，`test_release.py` 会用到）。
+2. 三项实测都加 `--validation dual-version\VALIDATION-v1.8.0.json`，都通过后确认队列空闲，用 `deploy-release.ps1` 更新应用。
+3. n8n：按 `automation/README.md` 安装依赖、登录上传用的 Chrome、安装 n8n（`NODES_EXCLUDE="[]"`）、导入并激活 `automation/n8n/sing-studio-upload.json`，在“发行上架”设置 EP 导出文件夹。
+4. 第一次发行：登录 Ditto 后让 Claude 在上传用的 Chrome 里看一次 Release Builder，按实际页面修好 `automation/maps/ditto.json` 并设 `verified: true`；之后用 n8n 表单上传，用户本人核对并点 Submit。把实际字段顺序、被平台退回的原因记到本文件。
+
+## 已知限制
+
+- 平台没有公开上传 API，上传须在网站上完成；规则按 2026-10-24 的 Ditto 帮助中心，平台改版后清单可能需要更新。OFFstep 的字段没有核对。
+- 版本说明（如 `Cinematic Orchestra Version`、`Lo-fi Version, Slowed`）是否被商店接受以平台审核为准；Ditto 只举例了 Remix、Live、Demo、Acoustic、Instrumental 等。
+- 封面是程序生成的抽象图案；如想用自己的图片，目前需在上传时替换 `cover.jpg`（只能写发行名称与艺人名）。
+- 发行包在应用电脑本机，“打开文件夹”只在 Windows 上可用。
+- n8n 提示“在容器外运行已弃用，将来版本须用官方 Docker 镜像”：放进 Docker 后 Execute Command 无法启动本机 Chrome、读不到本机路径。目前用 npm 安装（已测 2.44.6）并固定版本；将来若必须用 Docker，需要把助手改成本机的小服务，由 n8n 通过 HTTP 调用。
+- 网站改版、两步验证或验证码出现时填写会在那一步停下，其余按《上传清单》手动完成。
+
+## Git
+
+- 本分支 `feature/release-tab-v1.8.0` 基于 main（v1.7.0 合并提交 `394be2e`），以 main 为目标开 PR；合并后打 `v1.8.0` 标签。不得强制推送或覆盖标签。
+
+---
+
 # Sing Studio v1.7.0 · 2026-10-22
 
 ## 本次交付
