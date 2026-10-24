@@ -1,5 +1,17 @@
 # 更新记录
 
+## 1.8.0 — 2026-10-24
+
+- 发行上架（新模块 `release_pack.py`，侧栏“发行上架”）：把完成的作品整理成单曲、EP 或专辑（每个发行最多 20 首，按 Spotify 规则 1–3 首为 Single、4–6 首为 EP，超过 30 分钟或 7 首以上为 Album），平台为 Ditto Music 或 OFFstep 其一。新建时沿用上一个发行的艺人、署名真名、厂牌、风格、语言与版权所有人，平台默认换成上一个发行没用的那个。
+- 自动命名：曲名取原曲名（去掉文件名前的曲号，拉丁字母按商店 Title Case，中文不变）；版本写入 Ditto 的 Track mix version 字段，按风格组生成（亚洲 DJ 版与 EDM 为 `<风格> Remix`，其他为 `<风格> Version`），再附组曲部分、Kid Vocal、变调变速（Speed Up 写作 Sped Up）与 DJ Edit；商店显示为 `曲名 (版本)`。均可修改。
+- AI 声明（Ditto 发行级 No / Partially / Entirely AI，逐首 Credits 的 No / Partly / Fully AI）按作品的实际做法计算：作曲 No AI（自由旋律为 Partly），作词 No AI，演唱为保留原唱 No AI、换成原唱音色 Partly、YuE2 歌声 Fully，编曲制作 Fully；串烧取最强的一项。歌词取交给 YuE2 的歌词，否则取本机识别结果，按 Ditto 格式整理（去掉段落标记与时间戳、行尾不加标点、行首大写、(x2) 展开）。
+- 发行包（`POST /api/releases/<id>/build`，后台生成，完成前不能修改）：`data/releases/<id>/pack/` 下的 44.1 kHz / 16-bit 立体声 WAV（三角抖动、去除标签，导出后检查采样率、位深、时长、峰值、最长静音，并按最响的 30 秒给出 TikTok 试听起点）、3000 × 3000 RGB JPG 封面（只有发行名称与艺人名，按发行名称、艺人名与封面种子绘制，可“换一张”）、`lyrics/`、`metadata.json` 与填写好的《上传清单 Upload checklist》。修改已生成的发行会回到草稿，须重新生成。
+- 检查与防重复：生成前须填写发行名称、艺人名、主风格、语言、版权所有人与晚于今天的发行日期（不足 14 天提醒）；同一发行里曲名与版本不能完全相同；一个作品只能属于一个发行（先建或已提交的发行优先，删除发行即释放）；变调变速或 DJ 版的原作品在另一个平台的发行里时提醒 Content ID 风险；同一首歌超过 6 个版本、歌词为自动识别、歌声由 YuE2 生成（不是本人）时提醒。
+- 标记“已提交”后只能修改备注与 UPC，可“重新编辑”；可删除与恢复发行；本机服务重启时把中断的生成标记为失败。新路由：`POST /api/releases`、`/api/releases/<id>`、`/api/releases/<id>/(tracks|cover|build|open|submitted|reopen|remove|restore)`，`GET /releases/<id>/cover.jpg`；`/api/state` 新增 `releases` 与 `release_options`。
+- EP 导出文件夹（`POST /api/release-settings`，`/api/state` 的 `release_settings`）：设置后每次生成的发行包另存到 `<导出文件夹>/<发行名称>/`（先写隐藏的 `.partial` 再改名，读不到一半的文件夹；同名但属于其他发行的文件夹不覆盖，改用带编号的名称；改名后重新生成会删掉这个发行旧名称的副本）；`metadata.json` 记录 `release_id`，发行记录 `export_path`。
+- n8n 自动上传（新文件夹 `automation/`，详见其中 README）：`release-helper.mjs` 供 n8n 调用（`list` 列出已生成、未提交的 EP；`login` 打开上传用的 Chrome 登录一次；`fill` 在该 Chrome 里按 `maps/<平台>.json` 填写；`submitted` 写入 `submitted.json` 并把 Sing Studio 的发行标记为已提交），`fill-engine.mjs` 执行字段映射（文字、选项、勾选、附件、按钮、按曲目重复），名字像 Submit / Distribute / Publish / Pay / Checkout / 提交 / 付款 / 发布 的按钮一律拒绝点击；附件用 DevTools 直接交给本机 Chrome 读取，不受 50 MB 限制。`n8n/sing-studio-upload.json` 是可导入的三页表单流程（开始 → 选 EP → 结果与“已点 Submit”/UPC）。上传用的 Chrome 使用独立资料夹与只监听本机的调试端口。`maps/ditto.json` 为按帮助中心字段名写的草稿（未在真实页面核对），`maps/offstep.json` 只打开网站。
+- 新增 `test_release.py` 7 项回归（命名与歌词、AI 声明与发行类型、字段校验、检查规则、封面与真实 FFmpeg 导出、从草稿到已提交的完整路由、作品删除与已删除作品）；另加 EP 导出文件夹 1 项，原有 78 项与 4 项打包测试通过，共 86 项；`automation` 3 项 Node 测试（列表与提交记录、无界面 Chrome 在模拟上传页上按 Ditto 映射填写、拒绝点 Submit）。`deploy-release.ps1` 文件清单加入 `release_pack.py`；版本验证仍需要 adjust、voice 与 variety 三项实测，见 `dual-version/VALIDATION-v1.8.0.json`。
+
 ## 1.7.0 — 2026-10-22
 
 - 全部风格（`all_styles`）：统一设置一个开关，逐首可跟随统一或单独开关（`track.all_styles`，空值跟随）。开启后这首歌一次生成目录里的全部风格（现为 55 种），每种一个完整版本，按风格组顺序排队，版本字母 A–Z 之后接 AA、AB …（55 种为 A–BC，加管弦组曲为 BD–BF）。批次由后端按 `styles.json` 展开（请求里的版本列表被忽略），不受每首 20 个版本的限制；每首的随机种子各不相同。

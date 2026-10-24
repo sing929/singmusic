@@ -1,6 +1,8 @@
-# Sing Studio · v1.7.0
+# Sing Studio · v1.8.0
 
 本机 YuE2 整首音乐改编工作室。批量导入音频、可选歌词、每首 1–20 个完整版本或一次生成全部风格、原唱保留、收藏和可恢复移除。音频、歌词及推理留在电脑上。
+
+v1.8.0 新增“发行上架”：把完成的作品整理成单曲 / EP / 专辑，生成上传 Ditto Music 或 OFFstep 的发行包（44.1 kHz / 16-bit WAV、3000 × 3000 封面、Ditto 格式歌词、AI 声明与上传清单），见 `HANDOFF.md`；设置 EP 导出文件夹后可用 n8n 表单在 Chrome 里自动填好上传表单（Submit 由本人点），见 `automation/README.md`。
 
 v1.7.0 新增“全部风格”开关（每首一次生成全部 55 种风格）与 4 种说唱风格（Rap、Melodic Rap、Drill、Emo Rap），见下方“全部风格”。
 
@@ -98,7 +100,7 @@ v1.6.0 加入更多音乐变化：51 种风格分为 9 组（亚洲 DJ 版、电
 
 构建前端：在 `sing-studio-batch-preview/` 使用现有 Node 环境运行 `npm ci`（首次准备依赖）、`npm run build` 和 `npm run test:sites`。构建保留原有 Sites 兼容包装；生产功能必须连接本机 Python 服务，本次不发布云站点。
 
-后端验证：用现有音乐环境的 Python 运行 `dual-version/test_controls.py`、`test_instrumental.py`、`test_adjust.py`、`test_versions.py`、`test_voice.py`、`test_speed_variants.py`、`test_styles.py`、`test_kid_voice.py`、`test_dj.py`、`test_suite.py` 和 `test_all_styles.py`（纯音乐、变调、换声、童声、DJ 与组曲测试使用 runtime 中的 FFmpeg，先设置 `SING_LOCAL_TEST`；中文 Windows 上另设 `PYTHONUTF8=1`，否则 `test_voice.py` 读取换声脚本的中文输出时会按 GBK 解码失败；`test_voice.py` 用接口相同的替代引擎，不需要安装 Seed-VC）；运行 `test_backend.py` 前设置 `SING_LOCAL_TEST` 为本机 runtime 目录。变调变速的真实推理验证：`dual-version/benchmark_adjust.py --runtime ... --output <Git 外目录> --validation dual-version/VALIDATION-v1.3.0.json`，可加 `--source <本机纯伴奏 WAV>`；全部通过后才会把该版本验证标记为通过，部署脚本以此为准。后者需要既有示例音频与模型文件来验证可用性，推理本身使用测试进程。换声的真实推理验证：`dual-version/benchmark_voice.py --runtime ... --output <Git 外目录> --source <本机有人声的歌曲> --start <演唱段落秒数> --validation dual-version/VALIDATION-v1.4.0.json`（可加 `--lyrics-file`）。v1.4.0 需要 `benchmark_adjust.py` 与 `benchmark_voice.py` 都写入同一验证文件并通过。v1.6.0 另需 `dual-version/benchmark_variety.py --runtime ... --output <Git 外目录> --source <本机歌曲或纯伴奏> --validation dual-version/VALIDATION-v1.6.0.json`：用真实 YuE2 生成每组一种新风格、四种新演唱者（童声含本机童声处理）、三个组曲部分与组曲，并运行 DJ 效果与串烧；三项实测都通过后才能部署。v1.7.0 用同样三项，写入 `dual-version/VALIDATION-v1.7.0.json`；`benchmark_variety.py` 另外用占位歌词让 4 种新说唱风格各说唱一次。真实推理验证另用 `benchmark_controls.py --runtime ... --installed-app ... --output ...`，结果目录须留在 Git 外。
+后端验证：用现有音乐环境的 Python 运行 `dual-version/test_controls.py`、`test_instrumental.py`、`test_adjust.py`、`test_versions.py`、`test_voice.py`、`test_speed_variants.py`、`test_styles.py`、`test_kid_voice.py`、`test_dj.py`、`test_suite.py`、`test_all_styles.py` 和 `test_release.py`（纯音乐、变调、换声、童声、DJ 与组曲测试使用 runtime 中的 FFmpeg，先设置 `SING_LOCAL_TEST`；中文 Windows 上另设 `PYTHONUTF8=1`，否则 `test_voice.py` 读取换声脚本的中文输出时会按 GBK 解码失败；`test_voice.py` 用接口相同的替代引擎，不需要安装 Seed-VC）；运行 `test_backend.py` 前设置 `SING_LOCAL_TEST` 为本机 runtime 目录。变调变速的真实推理验证：`dual-version/benchmark_adjust.py --runtime ... --output <Git 外目录> --validation dual-version/VALIDATION-v1.3.0.json`，可加 `--source <本机纯伴奏 WAV>`；全部通过后才会把该版本验证标记为通过，部署脚本以此为准。后者需要既有示例音频与模型文件来验证可用性，推理本身使用测试进程。换声的真实推理验证：`dual-version/benchmark_voice.py --runtime ... --output <Git 外目录> --source <本机有人声的歌曲> --start <演唱段落秒数> --validation dual-version/VALIDATION-v1.4.0.json`（可加 `--lyrics-file`）。v1.4.0 需要 `benchmark_adjust.py` 与 `benchmark_voice.py` 都写入同一验证文件并通过。v1.6.0 另需 `dual-version/benchmark_variety.py --runtime ... --output <Git 外目录> --source <本机歌曲或纯伴奏> --validation dual-version/VALIDATION-v1.6.0.json`：用真实 YuE2 生成每组一种新风格、四种新演唱者（童声含本机童声处理）、三个组曲部分与组曲，并运行 DJ 效果与串烧；三项实测都通过后才能部署。v1.7.0 用同样三项，写入 `dual-version/VALIDATION-v1.7.0.json`；v1.8.0 同样三项，写入 `dual-version/VALIDATION-v1.8.0.json`（发行包不需要模型，开发电脑已用真实 FFmpeg 验证）；`benchmark_variety.py` 另外用占位歌词让 4 种新说唱风格各说唱一次。真实推理验证另用 `benchmark_controls.py --runtime ... --installed-app ... --output ...`，结果目录须留在 Git 外。
 
 更新现有安装：先完成构建和验证，再使用 `dual-version/deploy-release.ps1 -AppRoot <现有 sing-studio 目录>`。脚本拒绝活动队列，备份应用代码和前端，保留用户数据，并启动原有本机入口。仅用于已安装应用，不创建或下载推理环境；换声引擎由 `seedvc-install.ps1` 单独安装，更新应用不会改动它。
 

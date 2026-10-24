@@ -23,7 +23,7 @@ function Assert-Idle {
     }
 }
 Assert-Idle
-$files=@('service.py','engine.py','yue2_engine.py','generation_controls.py','audio_adjust.py','voice_swap.py','seedvc_runner.py','kid_voice.py','dj_tools.py','suite.py','release.json','styles.json')
+$files=@('service.py','engine.py','yue2_engine.py','generation_controls.py','audio_adjust.py','voice_swap.py','seedvc_runner.py','kid_voice.py','dj_tools.py','suite.py','release_pack.py','release.json','styles.json')
 foreach($name in $files | Where-Object {$_ -like '*.py'}){
     & $python -m py_compile (Join-Path $PSScriptRoot $name)
     if($LASTEXITCODE -ne 0){throw 'Python syntax validation failed'}

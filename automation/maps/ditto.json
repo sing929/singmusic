@@ -1,0 +1,31 @@
+{
+  "name": "Ditto Music",
+  "verified": false,
+  "note": "Draft from Ditto's help centre field names (2026-10-24). Not yet checked against the live Release Builder: confirm each target on the first signed-in run and set verified to true. Steps after 'Create release' are optional, so anything not found is listed for manual entry instead of stopping.",
+  "start_url": "https://dittomusic.com/",
+  "login_url": "https://dittomusic.com/",
+  "login_patterns": ["login", "signin", "sign-in"],
+  "steps": [
+    { "name": "Create New", "action": "click", "target": { "role": "button", "name": "Create New" }, "optional": true },
+    { "name": "Create release", "action": "click", "target": { "text": "Create Release" } },
+    { "name": "Standard release", "action": "click", "target": { "text": "Standard Release" }, "optional": true },
+    { "name": "Release title", "action": "fill", "target": { "label": "Release title" }, "value": "{{release.title}}", "optional": true },
+    { "name": "Primary artist", "action": "fill", "target": { "label": "Primary artist" }, "value": "{{release.artist}}", "optional": true },
+    { "name": "Record label", "action": "fill", "target": { "label": "Record label" }, "value": "{{release.label}}", "optional": true },
+    { "name": "Primary genre", "action": "select", "target": { "label": "Primary genre" }, "value": "{{release.genre}}", "optional": true },
+    { "name": "Secondary genre", "action": "select", "target": { "label": "Secondary genre" }, "value": "{{release.subgenre}}", "optional": true },
+    { "name": "Language", "action": "select", "target": { "label": "Language" }, "value": "{{release.language_name}}", "optional": true },
+    { "name": "Copyright holder", "action": "fill", "target": { "label": "Copyright" }, "value": "{{release.copyright_holder}}", "optional": true },
+    { "name": "Copyright year", "action": "fill", "target": { "label": "Year" }, "value": "{{release.copyright_year}}", "optional": true },
+    { "name": "Artwork", "action": "upload", "target": { "css": "input[type=file][accept*=image]" }, "files": "{{cover}}", "optional": true },
+    { "name": "Audio files", "action": "upload", "target": { "css": "input[type=file][accept*=audio]" }, "files_from": "track_files", "optional": true },
+    { "name": "AI use: {{release.ai_use_text}}", "action": "check", "target": { "label": "{{release.ai_use_text}}" }, "value": "true", "optional": true },
+    { "for_each": "tracks", "steps": [
+      { "name": "Track {{index}} edit", "action": "click", "target": { "role": "button", "name": "Edit", "nth": "{{index}}" }, "optional": true },
+      { "name": "Track {{index}} title", "action": "fill", "target": { "label": "Track title" }, "value": "{{track.title}}", "optional": true },
+      { "name": "Track {{index}} mix version", "action": "fill", "target": { "label": "mix version" }, "value": "{{track.version}}", "optional": true },
+      { "name": "Track {{index}} lyrics", "action": "fill", "target": { "label": "Lyrics" }, "value": "{{track.lyrics}}", "optional": true }
+    ] },
+    { "name": "Release date", "action": "fill", "target": { "label": "Release date" }, "value": "{{release.release_date}}", "optional": true }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "sing_studio": "http://127.0.0.1:18765",
+  "chrome": "C:/Program Files/Google/Chrome/Application/chrome.exe",
+  "profile": "C:/Users/<you>/AppData/Local/SingStudio/upload-chrome",
+  "port": 9333
+}
