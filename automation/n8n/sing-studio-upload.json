@@ -1,0 +1,250 @@
+{
+  "name": "Sing Studio · 上传 EP（填到 Submit 前）",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Sing Studio · 上传 EP",
+        "formDescription": "检查 Sing Studio 已生成、还没提交的 EP，在上传用的 Chrome 里填好 Ditto Music / OFFstep 的表单。最后的 Submit 由你本人点。",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "开始",
+              "fieldType": "dropdown",
+              "fieldOptions": { "values": [ { "option": "检查待上传的 EP" } ] },
+              "requiredField": true
+            }
+          ]
+        },
+        "options": { "path": "sing-studio-upload", "appendAttribution": false, "buttonLabel": "开始" }
+      },
+      "id": "a1f0c9e2-0001-4c1e-9a10-000000000001",
+      "name": "Start",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [0, 300],
+      "webhookId": "5b7f3c4e-2a51-4f6e-9a0d-sing00upload1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b2a0c9e2-0002-4c1e-9a10-000000000002",
+              "name": "helper",
+              "value": "D:\\singmusic\\automation\\release-helper.mjs",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1f0c9e2-0002-4c1e-9a10-000000000002",
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "command": "=node \"{{ $('Settings').first().json.helper }}\" list"
+      },
+      "id": "a1f0c9e2-0003-4c1e-9a10-000000000003",
+      "name": "List EPs",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// The helper prints one JSON line.\nconst raw = ($input.first().json.stdout || '').trim().split('\\n').pop();\nlet result;\ntry { result = JSON.parse(raw); } catch { result = { ok: false, error: 'release-helper 没有正常输出：' + (raw || $input.first().json.stderr || '') }; }\nreturn [{ json: { ...result, count: result.count || 0, eps: result.eps || [] } }];"
+      },
+      "id": "a1f0c9e2-0004-4c1e-9a10-000000000004",
+      "name": "Read list",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.ok && $json.count > 0 }}",
+              "rightValue": "",
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1f0c9e2-0005-4c1e-9a10-000000000005",
+      "name": "Any EP?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [880, 300]
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "没有待上传的 EP",
+        "completionMessage": "={{ $json.ok ? '在 Sing Studio 的“发行上架”生成发行包（并设置 EP 导出文件夹）后，EP 会出现在这里。' : $json.error }}",
+        "options": {}
+      },
+      "id": "a1f0c9e2-0006-4c1e-9a10-000000000006",
+      "name": "Nothing to upload",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [1100, 460]
+    },
+    {
+      "parameters": {
+        "defineForm": "json",
+        "jsonOutput": "={{ JSON.stringify([\n  { fieldLabel: 'EP', fieldType: 'dropdown', requiredField: true, fieldOptions: { values: $json.eps.map(e => ({ option: e.label })) } },\n  { fieldLabel: '确认', fieldType: 'dropdown', requiredField: true, fieldOptions: { values: [ { option: '我已在 Sing Studio 看过封面、曲目、版本名和 AI 声明' } ] } }\n]) }}",
+        "options": {
+          "formTitle": "选择要上传的 EP",
+          "formDescription": "={{ $json.count }} 个 EP 已生成、还没提交。下一步会打开上传用的 Chrome 并填写表单，不会点 Submit。",
+          "buttonLabel": "在 Chrome 里填写"
+        }
+      },
+      "id": "a1f0c9e2-0007-4c1e-9a10-000000000007",
+      "name": "Choose EP",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [1100, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const list = $('Read list').first().json;\nconst ep = list.eps.find(e => e.label === $input.first().json.EP);\nif (!ep) throw new Error('找不到所选的 EP，请重新开始。');\nreturn [{ json: { id: ep.id, title: ep.title, distributor_name: ep.distributor_name } }];"
+      },
+      "id": "a1f0c9e2-0008-4c1e-9a10-000000000008",
+      "name": "Chosen EP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 200]
+    },
+    {
+      "parameters": {
+        "command": "=node \"{{ $('Settings').first().json.helper }}\" fill {{ $json.id.replace(/[^0-9a-f]/g, '') }}"
+      },
+      "id": "a1f0c9e2-0009-4c1e-9a10-000000000009",
+      "name": "Fill in Chrome",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [1540, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = ($input.first().json.stdout || '').trim().split('\\n').pop();\nlet result;\ntry { result = JSON.parse(raw); } catch { result = { ok: false, error: 'release-helper 没有正常输出：' + (raw || $input.first().json.stderr || '') }; }\nconst chosen = $('Chosen EP').first().json;\nconst message = result.ok ? result.message : '没有完成：' + result.error;\nconst note = result.ok && result.map_verified === false && result.status !== 'login_required' ? '（字段映射还没在真实页面核对过，请特别留意每一项。）' : '';\nreturn [{ json: { ...chosen, status: result.status || 'error', message: message + note } }];"
+      },
+      "id": "a1f0c9e2-0010-4c1e-9a10-000000000010",
+      "name": "Read fill result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1760, 200]
+    },
+    {
+      "parameters": {
+        "defineForm": "json",
+        "jsonOutput": "={{ JSON.stringify([\n  { fieldLabel: '结果', fieldType: 'dropdown', requiredField: true, fieldOptions: { values: [ { option: '我已在平台核对并点了 Submit' }, { option: '还没有，先保留' } ] } },\n  { fieldLabel: 'UPC（平台显示后可填，选填）', fieldType: 'text', requiredField: false }\n]) }}",
+        "options": {
+          "formTitle": "={{ $json.title }} · {{ $json.distributor_name }}",
+          "formDescription": "={{ $json.message }}",
+          "buttonLabel": "保存"
+        }
+      },
+      "id": "a1f0c9e2-0011-4c1e-9a10-000000000011",
+      "name": "After Submit",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [1980, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "c2",
+              "leftValue": "={{ $json['结果'] === '我已在平台核对并点了 Submit' }}",
+              "rightValue": "",
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1f0c9e2-0012-4c1e-9a10-000000000012",
+      "name": "Submitted?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [2200, 200]
+    },
+    {
+      "parameters": {
+        "command": "=node \"{{ $('Settings').first().json.helper }}\" submitted {{ $('Chosen EP').first().json.id.replace(/[^0-9a-f]/g, '') }} {{ String($json['UPC（平台显示后可填，选填）'] || '').replace(/\\D/g, '') }}"
+      },
+      "id": "a1f0c9e2-0013-4c1e-9a10-000000000013",
+      "name": "Mark submitted",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [2420, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = ($input.first().json.stdout || '').trim().split('\\n').pop();\nlet result;\ntry { result = JSON.parse(raw); } catch { result = { ok: false, error: 'release-helper 没有正常输出：' + (raw || $input.first().json.stderr || '') }; }\nreturn [{ json: { title: result.ok ? '已记录提交' : '未能记录', message: result.ok ? result.message + (result.warning ? ' ' + result.warning : '') : result.error } }];"
+      },
+      "id": "a1f0c9e2-0014-4c1e-9a10-000000000014",
+      "name": "Read mark result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2640, 100]
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "={{ $json.title }}",
+        "completionMessage": "={{ $json.message }}",
+        "options": {}
+      },
+      "id": "a1f0c9e2-0015-4c1e-9a10-000000000015",
+      "name": "Done",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [2860, 100]
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "已保留",
+        "completionMessage": "这个 EP 仍在待上传列表里。Chrome 里的表单保持打开；核对并点了 Submit 后，重新打开这个表单选“我已在平台核对并点了 Submit”，或在 Sing Studio 里标记“已提交”。",
+        "options": {}
+      },
+      "id": "a1f0c9e2-0016-4c1e-9a10-000000000016",
+      "name": "Kept",
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 1,
+      "position": [2420, 320]
+    }
+  ],
+  "connections": {
+    "Start": { "main": [ [ { "node": "Settings", "type": "main", "index": 0 } ] ] },
+    "Settings": { "main": [ [ { "node": "List EPs", "type": "main", "index": 0 } ] ] },
+    "List EPs": { "main": [ [ { "node": "Read list", "type": "main", "index": 0 } ] ] },
+    "Read list": { "main": [ [ { "node": "Any EP?", "type": "main", "index": 0 } ] ] },
+    "Any EP?": { "main": [ [ { "node": "Choose EP", "type": "main", "index": 0 } ], [ { "node": "Nothing to upload", "type": "main", "index": 0 } ] ] },
+    "Choose EP": { "main": [ [ { "node": "Chosen EP", "type": "main", "index": 0 } ] ] },
+    "Chosen EP": { "main": [ [ { "node": "Fill in Chrome", "type": "main", "index": 0 } ] ] },
+    "Fill in Chrome": { "main": [ [ { "node": "Read fill result", "type": "main", "index": 0 } ] ] },
+    "Read fill result": { "main": [ [ { "node": "After Submit", "type": "main", "index": 0 } ] ] },
+    "After Submit": { "main": [ [ { "node": "Submitted?", "type": "main", "index": 0 } ] ] },
+    "Submitted?": { "main": [ [ { "node": "Mark submitted", "type": "main", "index": 0 } ], [ { "node": "Kept", "type": "main", "index": 0 } ] ] },
+    "Mark submitted": { "main": [ [ { "node": "Read mark result", "type": "main", "index": 0 } ] ] },
+    "Read mark result": { "main": [ [ { "node": "Done", "type": "main", "index": 0 } ] ] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}
