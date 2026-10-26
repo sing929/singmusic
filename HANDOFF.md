@@ -1,3 +1,22 @@
+# Sing Studio v1.8.1 · 2026-10-26
+
+## 本次交付
+
+- 用户问“能不能用命令行”：已说明 `release-helper.mjs` 本身就是命令行工具；用户要求加 `build <id>` 与一步完成的 `upload`，让整个流程不需要 n8n 也能在命令行完成。
+- `automation/release-helper.mjs`：`releases`、`build`、`upload [--rebuild]`、`resolveId`（6 位以上唯一前缀，只在未删除的发行里找）；`find` 改用 `resolveId`；`fill`、`submitted` 也接受前缀。`build` 通过 Sing Studio 的 `POST /api/releases/<id>/build` 生成并每秒查询一次（最长 30 分钟），要求 `export_path` 存在。Sing Studio 后端与界面没有改动。
+- 版本源、两个 package / lock、CHANGELOG、README（automation）同步为 1.8.1；新增 `VALIDATION-v1.8.1.json`（`passed: false`）。
+
+## 本次验证
+
+- `automation` 5 项 Node 测试通过（无界面 Chrome）；后端回归未改动（v1.8.0 的 86 项）。
+- 替代安装的真实 Sing Studio：`releases` → `build 18e09664`（8 位前缀）生成并复制到导出文件夹 → `upload`（沿用）→ `upload --rebuild` → `build 999999` 报“找不到”，填写都在模拟上传页上、未点 Submit；测试配置、导出文件夹设置与测试 Chrome 已清理。
+
+## 在应用电脑上
+
+- 与 v1.8.0 相同（见下一节）。命令行用法见 `automation/README.md` 的“命令行”一节。
+
+---
+
 # Sing Studio v1.8.0 · 2026-10-24
 
 ## 本次交付

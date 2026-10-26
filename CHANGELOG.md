@@ -1,5 +1,10 @@
 # 更新记录
 
+## 1.8.1 — 2026-10-26
+
+- 命令行完成整个发行流程（`automation/release-helper.mjs`，不需要 n8n）：新增 `releases`（所有未删除的发行：编号、标题、平台、状态、生成状态、曲目数、日期、EP 文件夹、仍需处理的问题）、`build <编号>`（请求 Sing Studio 生成发行包并等待完成，须已设 EP 导出文件夹；有问题时列出问题不生成；已提交的发行拒绝）与 `upload <编号> [--rebuild]`（EP 文件夹里没有当前发行包时先生成，再在上传用的 Chrome 里填写表单；`--rebuild` 强制重新生成）。所有需要编号的命令都接受 6 位以上的唯一前缀（`resolveId`）。`submitted.json` 的 `by` 改为 `release-helper`。
+- 测试：`automation` 测试增至 5 项（编号前缀与列表、生成的等待 / 问题 / 未设导出文件夹、`upload` 先生成再填写并在第二次沿用发行包，均不点 Submit）；用替代安装的真实 Sing Studio 跑过 `releases`、`build`、`upload`、`upload --rebuild` 与无效编号。应用本身没有改动，版本验证仍需 adjust、voice 与 variety 三项实测，见 `dual-version/VALIDATION-v1.8.1.json`。
+
 ## 1.8.0 — 2026-10-24
 
 - 发行上架（新模块 `release_pack.py`，侧栏“发行上架”）：把完成的作品整理成单曲、EP 或专辑（每个发行最多 20 首，按 Spotify 规则 1–3 首为 Single、4–6 首为 EP，超过 30 分钟或 7 首以上为 Album），平台为 Ditto Music 或 OFFstep 其一。新建时沿用上一个发行的艺人、署名真名、厂牌、风格、语言与版权所有人，平台默认换成上一个发行没用的那个。

@@ -48,6 +48,23 @@
 
 每次填写都会在 EP 文件夹里写 `upload-log.json`（填了哪些、跳过哪些）。
 
+## 命令行（不需要 n8n）
+
+在仓库的 `automation` 文件夹运行。编号（release id）只需写前 6 位以上，用 `releases` 查看。
+
+| 命令 | 作用 |
+| --- | --- |
+| `node release-helper.mjs releases` | 所有发行：编号、标题、平台、状态、曲目数、日期、还缺什么 |
+| `node release-helper.mjs build <编号>` | 生成发行包并等它复制到 EP 导出文件夹 |
+| `node release-helper.mjs upload <编号>` | 一步完成：需要时先生成，再在上传用的 Chrome 里填好表单 |
+| `node release-helper.mjs upload <编号> --rebuild` | 同上，但一定重新生成发行包 |
+| `node release-helper.mjs list` | 已生成、还没提交的 EP |
+| `node release-helper.mjs login ditto` | 打开上传用的 Chrome 登录（只需一次） |
+| `node release-helper.mjs fill <编号>` | 只填表单（发行包已生成时） |
+| `node release-helper.mjs submitted <编号> [UPC]` | 你点了 Submit 之后记录提交 |
+
+例：先 `releases` 找到编号 `18e09664…`，资料都填好后 `upload 18e09664`，在 Chrome 里核对并点 Submit，再 `submitted 18e09664 123456789012`。每个命令输出一行 JSON，`ok` 为 `false` 时看 `error`，成功时看 `message`。命令行同样不会点 Submit、付款或发布类按钮。
+
 ## 字段映射（maps/）
 
 `maps/ditto.json` 按 Ditto 帮助中心的字段名写成（2026-10-24），**还没有在真实的 Ditto Release Builder 上核对**（`"verified": false`）：找不到的字段会跳过并在结果页列出，不会乱填。第一次登录后，请让 Claude 打开这个 Chrome 看一次 Release Builder，按实际页面改好映射再把 `verified` 改成 `true`。`maps/offstep.json` 还没有步骤：只会打开网站，表单按清单手动填。
@@ -60,7 +77,7 @@
 npm test
 ```
 
-用本机 Chrome（无界面）在 `test/mock-builder.html` 这个模拟上传页上跑 Ditto 映射，检查填写、附件、AI 声明与“拒绝点 Submit”，并用模拟的 Sing Studio 检查列表与提交记录。
+用本机 Chrome（无界面）在 `test/mock-builder.html` 这个模拟上传页上跑 Ditto 映射，检查填写、附件、AI 声明与“拒绝点 Submit”，并用模拟的 Sing Studio 检查列表、编号前缀、`build`、`upload` 与提交记录。
 
 ## 注意
 
