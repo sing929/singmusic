@@ -1,8 +1,8 @@
-# Sing Studio · v1.8.0
+# Sing Studio · v1.8.1
 
 本机 YuE2 整首音乐改编工作室。批量导入音频、可选歌词、每首 1–20 个完整版本或一次生成全部风格、原唱保留、收藏和可恢复移除。音频、歌词及推理留在电脑上。
 
-v1.8.0 新增“发行上架”：把完成的作品整理成单曲 / EP / 专辑，生成上传 Ditto Music 或 OFFstep 的发行包（44.1 kHz / 16-bit WAV、3000 × 3000 封面、Ditto 格式歌词、AI 声明与上传清单），见 `HANDOFF.md`；设置 EP 导出文件夹后可用 n8n 表单在 Chrome 里自动填好上传表单（Submit 由本人点），见 `automation/README.md`。
+v1.8.0 新增“发行上架”：把完成的作品整理成单曲 / EP / 专辑，生成上传 Ditto Music 或 OFFstep 的发行包（44.1 kHz / 16-bit WAV、3000 × 3000 封面、Ditto 格式歌词、AI 声明与上传清单），见 `HANDOFF.md`；设置 EP 导出文件夹后可用 n8n 表单在 Chrome 里自动填好上传表单（Submit 由本人点），见 `automation/README.md`；v1.8.1 起也可以完全用命令行（`release-helper.mjs releases / build / upload`）。
 
 v1.7.0 新增“全部风格”开关（每首一次生成全部 55 种风格）与 4 种说唱风格（Rap、Melodic Rap、Drill、Emo Rap），见下方“全部风格”。
 

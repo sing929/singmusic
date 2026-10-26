@@ -1,6 +1,6 @@
 {
   "name": "sing-studio-release-automation",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "private": true,
   "type": "module",
   "description": "Helper that n8n runs on the app PC: lists packed EPs, fills the distributor upload form in Chrome (never Submit), records submissions.",

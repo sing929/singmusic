@@ -8,10 +8,11 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { after, before, test } from 'node:test';
 import { FORBIDDEN, fillIn, runMap } from '../fill-engine.mjs';
-import { config, formData, list, loadMap, submitted } from '../release-helper.mjs';
+import { build, config, formData, list, loadMap, releases, resolveId, submitted, upload } from '../release-helper.mjs';
 
 const ID = 'a'.repeat(32);
-let root, folder, server, calls, cfg;
+const NEW = 'c'.repeat(32);
+let root, folder, server, calls, cfg, exportFolder;
 
 function pack(dir, id) {
   mkdirSync(join(dir, 'lyrics'), { recursive: true });
@@ -28,24 +29,39 @@ function pack(dir, id) {
 
 before(async () => {
   root = mkdtempSync(join(tmpdir(), 'sing-helper-'));
+  exportFolder = root;
   folder = join(root, 'Summer Wind');
   pack(folder, ID);
   pack(join(root, 'Old EP'), 'b'.repeat(32));
   calls = [];
+  const draft = (id, title, problems = []) => ({ id, title, status: 'draft', hidden: false, tracks: [{}, {}], release_date: '2026-12-01', review: { problems, warnings: [] } });
   const releases = [
-    { id: ID, status: 'ready', hidden: false, export_path: folder },
-    { id: 'b'.repeat(32), status: 'draft', hidden: false, export_path: join(root, 'Old EP') },
+    { ...draft(ID, 'Summer Wind'), status: 'ready', export_path: folder },
+    { ...draft('b'.repeat(32), 'Old EP'), export_path: join(root, 'Old EP') },
+    draft(NEW, 'Night Drive'),
+    draft('d'.repeat(32), 'Unfinished', ['请填写艺人名。']),
+    { ...draft('ab' + 'c'.repeat(30), 'Twin'), hidden: true },
   ];
+  // Sing Studio stand-in: a build takes a moment, then the pack appears in the EP export folder.
   server = createServer((req, res) => {
     let body = '';
     req.on('data', (c) => { body += c; });
     req.on('end', () => {
       if (req.method === 'GET' && req.url === '/api/state') {
-        res.end(JSON.stringify({ token: 'T', releases, release_settings: { export_folder: root } }));
+        res.end(JSON.stringify({ token: 'T', releases, release_settings: { export_folder: exportFolder } }));
         return;
       }
       calls.push({ url: req.url, token: req.headers['x-sing-token'], body: JSON.parse(body || '{}') });
-      res.end(JSON.stringify({ status: 'submitted' }));
+      const building = releases.find((r) => req.url === `/api/releases/${r.id}/build`);
+      if (building) {
+        building.build = { state: 'building' };
+        setTimeout(() => {
+          const out = join(root, building.title);
+          pack(out, building.id);
+          Object.assign(building, { status: 'ready', export_path: out, build: { state: 'done', export_path: out, tracks: [{}, {}], warnings: [] } });
+        }, 400);
+      }
+      res.end(JSON.stringify({ status: 'ok' }));
     });
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
@@ -54,7 +70,8 @@ before(async () => {
 
 after(() => {
   server.close();
-  rmSync(root, { recursive: true, force: true });
+  // Chrome may still be releasing its profile folder for a moment after it closes.
+  rmSync(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
 });
 
 test('templates and the submit guard', () => {
@@ -116,4 +133,62 @@ test('fills the mock builder with the Ditto map and never submits', { timeout: 1
     await browser.close();
   }
   assert.ok(existsSync(join(folder, 'metadata.json')));
+});
+
+test('release ids, the releases list and build', { timeout: 60000 }, async () => {
+  const all = (await releases(cfg)).releases;
+  assert.deepEqual(all.map((r) => r.id), [ID, 'b'.repeat(32), NEW, 'd'.repeat(32)]);
+  assert.equal(all[3].problems[0], '请填写艺人名。');
+  assert.equal(resolveId(all, 'AAAAAA'), ID);
+  assert.throws(() => resolveId(all, 'aaa'), /至少前 6 位/);
+  assert.throws(() => resolveId(all, 'abcccc'), /找不到/);
+  assert.throws(() => resolveId([...all, { id: 'a'.repeat(31) + 'b' }], 'aaaaaa'), /多个/);
+  const blocked = await build(cfg, 'dddddd', { poll: 50 });
+  assert.equal(blocked.ok, false);
+  assert.match(blocked.error, /艺人名/);
+  exportFolder = '';
+  await assert.rejects(build(cfg, 'bbbbbb', { poll: 50 }), /导出文件夹/);
+  exportFolder = root;
+  const made = await build(cfg, 'bbbbbb', { poll: 50 });
+  assert.equal(made.status, 'built', JSON.stringify(made));
+  assert.equal(made.export_path, join(root, 'Old EP'));
+  assert.equal(calls.at(-1).url, `/api/releases/${'b'.repeat(32)}/build`);
+});
+
+test('upload builds when needed, then fills the form without submitting', { timeout: 180000 }, async (t) => {
+  if (!cfg.chrome) return t.skip('Chrome not installed');
+  const maps = join(root, 'maps');
+  mkdirSync(maps, { recursive: true });
+  writeFileSync(join(maps, 'ditto.json'), JSON.stringify({ ...loadMap('ditto'), start_url: pathToFileURL(join(import.meta.dirname, 'mock-builder.html')).href }));
+  // The Chrome profile lives outside the test folder: Chrome lets go of it a little after it exits.
+  const profile = mkdtempSync(join(tmpdir(), 'sing-helper-chrome-'));
+  const own = { ...cfg, maps, port: 9341, profile, headless: true };
+  try {
+    const first = await upload(own, 'cccccc', { poll: 50 });
+    assert.equal(first.status, 'filled', JSON.stringify(first));
+    assert.equal(first.built.export_path, join(root, 'Night Drive'));
+    assert.match(first.message, /^已生成发行包/);
+    assert.ok(calls.some((c) => c.url === `/api/releases/${NEW}/build`));
+    const builds = calls.filter((c) => c.url.endsWith('/build')).length;
+    const again = await upload(own, 'cccccc', { poll: 50 });
+    assert.equal(again.built, 'reused');
+    assert.equal(calls.filter((c) => c.url.endsWith('/build')).length, builds);
+    const { chromium } = await import('playwright-core');
+    const browser = await chromium.connectOverCDP(`http://127.0.0.1:${own.port}`);
+    const page = browser.contexts()[0].pages().filter((p) => p.url().includes('mock-builder')).at(-1);
+    assert.equal(await page.locator('#state').textContent(), 'draft');
+    assert.equal(await page.locator('#audio').evaluate((el) => el.files.length), 2);
+    await browser.close();
+  } finally {
+    // The upload Chrome was started by the helper and outlives it; close it for the test.
+    const session = await fetch(`http://127.0.0.1:9341/json/version`).then((r) => r.json()).catch(() => null);
+    if (session) {
+      const { chromium } = await import('playwright-core');
+      const browser = await chromium.connectOverCDP('http://127.0.0.1:9341');
+      await (await browser.newBrowserCDPSession()).send('Browser.close').catch(() => {});
+      for (let i = 0; i < 60 && (await fetch('http://127.0.0.1:9341/json/version').then(() => true, () => false)); i++) await new Promise((r) => setTimeout(r, 250));
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+    try { rmSync(profile, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 }); } catch { /* left in the temp folder */ }
+  }
 });

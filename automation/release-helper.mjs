@@ -1,9 +1,13 @@
-// Sing Studio release helper for n8n (runs on the app PC, next to Sing Studio).
+// Sing Studio release helper for n8n or the command line (runs on the app PC, next to Sing Studio).
+//   node release-helper.mjs releases             every release with its id, status and what still blocks it
+//   node release-helper.mjs build <id>           make the release pack (and its EP folder) and wait for it
+//   node release-helper.mjs upload <id> [--rebuild]   build when needed, then fill the upload form; never Submit
 //   node release-helper.mjs list                 EP folders that are packed and not yet submitted
 //   node release-helper.mjs login <distributor>  open the upload Chrome on the distributor site to sign in once
-//   node release-helper.mjs fill <release id>    fill the distributor's upload form in that Chrome, never Submit
-//   node release-helper.mjs submitted <release id> [UPC]   record that the person pressed Submit
-// Every command prints one JSON object and exits 0, so n8n can branch on "ok" and "status".
+//   node release-helper.mjs fill <id>            fill the distributor's upload form in that Chrome, never Submit
+//   node release-helper.mjs submitted <id> [UPC] record that the person pressed Submit
+// <id> may be the first 6 or more characters of a release id. Every command prints one JSON object and
+// exits 0, so n8n and scripts can branch on "ok" and "status".
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -40,11 +44,59 @@ async function studio(cfg, path, body) {
   return data;
 }
 
+async function studioState(cfg) {
+  try { return await studio(cfg, '/api/state'); } catch (error) {
+    throw new Error(`Sing Studio 没有响应（${cfg.sing_studio}）：请先打开 Sing Studio。${error.message}`);
+  }
+}
+
+// A full release id from an id or a unique prefix of at least 6 characters, among releases not deleted.
+export function resolveId(releases, given) {
+  const text = String(given || '').toLowerCase();
+  if (!/^[0-9a-f]{6,32}$/.test(text)) throw new Error('请给出发行编号（release id，至少前 6 位）；用 releases 命令查看。');
+  const matches = releases.filter((r) => !r.hidden && r.id.startsWith(text));
+  if (matches.length !== 1) throw new Error(matches.length ? `编号 ${text} 对应多个发行，请多写几位。` : `找不到编号为 ${text} 的发行；用 releases 命令查看。`);
+  return matches[0].id;
+}
+
+// Every release that is not deleted, with what still stops a pack (the ids to pass to build / upload).
+export async function releases(cfg) {
+  const state = await studioState(cfg);
+  const shown = (state.releases || []).filter((r) => !r.hidden);
+  return { ok: true, export_folder: state.release_settings?.export_folder || '', count: shown.length,
+    releases: shown.map((r) => ({ id: r.id, title: r.title || '未命名发行', distributor: r.distributor, status: r.status, build: r.build?.state || '',
+      tracks: r.tracks.length, release_date: r.release_date, export_path: r.export_path || '', problems: r.review?.problems || [], warnings: r.review?.warnings?.length || 0 })) };
+}
+
+// Asks Sing Studio to make the pack, then waits for it; the pack is only useful here once it is also
+// copied to the EP export folder, so a missing export folder is an error.
+export async function build(cfg, given, { poll = 1000, limit = 30 * 60 * 1000 } = {}) {
+  const state = await studioState(cfg);
+  const id = resolveId(state.releases || [], given);
+  let release = state.releases.find((r) => r.id === id);
+  if (!state.release_settings?.export_folder) throw new Error('请先在 Sing Studio“发行上架”设置 EP 导出文件夹，发行包才会出现在自动上传读取的文件夹里。');
+  if (release.status === 'submitted') throw new Error(`《${release.title}》已提交到平台；需要改动时先在 Sing Studio 里“重新编辑”。`);
+  if (release.review?.problems?.length) return { ok: false, status: 'problems', id, problems: release.review.problems, error: '生成发行包前请先在 Sing Studio 处理：' + release.review.problems.join(' ') };
+  if (release.build?.state !== 'building') await studio(cfg, `/api/releases/${id}/build`, {});
+  const deadline = Date.now() + limit;
+  for (;;) {
+    await new Promise((r) => setTimeout(r, poll));
+    release = (await studioState(cfg)).releases.find((r) => r.id === id);
+    if (release?.build?.state !== 'building') break;
+    if (Date.now() > deadline) return { ok: false, status: 'building', id, error: '发行包还在生成，请稍后用 releases 查看。' };
+  }
+  const result = release?.build || {};
+  if (result.state !== 'done') return { ok: false, status: 'failed', id, error: result.error || '发行包没有生成。' };
+  if (result.export_error || !result.export_path) return { ok: false, status: 'failed', id, error: result.export_error || '发行包已生成，但没有复制到 EP 导出文件夹。' };
+  return { ok: true, status: 'built', id, title: release.title, export_path: result.export_path, tracks: result.tracks?.length || 0, warnings: result.warnings || [],
+    message: `已生成《${release.title}》的发行包（${result.tracks?.length || 0} 首），EP 文件夹：${result.export_path}` };
+}
+
 // Packed releases whose EP folder still holds this release's pack and has no submitted.json.
 export async function list(cfg) {
   let state;
-  try { state = await studio(cfg, '/api/state'); } catch (error) {
-    return { ok: false, error: `Sing Studio 没有响应（${cfg.sing_studio}）：请先打开 Sing Studio。${error.message}` };
+  try { state = await studioState(cfg); } catch (error) {
+    return { ok: false, error: error.message };
   }
   const eps = [];
   for (const r of state.releases || []) {
@@ -58,11 +110,13 @@ export async function list(cfg) {
   return { ok: true, export_folder: state.release_settings?.export_folder || '', count: eps.length, eps };
 }
 
-async function find(cfg, id) {
-  if (!/^[0-9a-f]{32}$/.test(id || '')) throw new Error('发行编号无效。');
-  const found = (await list(cfg)).eps?.find((ep) => ep.id === id);
-  if (!found) throw new Error('找不到这个待上传的 EP：可能已标记提交，或资料改动后还没重新生成发行包。');
-  return found;
+async function find(cfg, given) {
+  const found = await list(cfg);
+  if (!found.ok) throw new Error(found.error);
+  const id = resolveId((await studioState(cfg)).releases || [], given);
+  const ep = found.eps.find((e) => e.id === id);
+  if (!ep) throw new Error('这个发行还不是待上传的 EP：可能已标记提交，或资料改动后还没重新生成发行包（可用 build 或 upload 命令）。');
+  return ep;
 }
 
 // The upload Chrome: its own profile (sign in to the distributors there once) with a local debugging
@@ -119,7 +173,7 @@ async function login(cfg, distributor) {
   return { ok: true, status: 'opened', message: `已在上传用的 Chrome 打开 ${map.name}，请在那里登录一次（会保持登录）。` };
 }
 
-async function fill(cfg, id) {
+export async function fill(cfg, id) {
   const ep = await find(cfg, id);
   const map = loadMap(ep.distributor, cfg.maps);
   const data = formData(ep.folder);
@@ -131,7 +185,7 @@ async function fill(cfg, id) {
   const signedOut = (map.login_patterns || []).some((p) => page.url().toLowerCase().includes(p))
     || await page.locator('input[type=password]').first().isVisible().catch(() => false);
   if (signedOut) {
-    return { ok: true, status: 'login_required', ep, message: `请先在打开的 Chrome 里登录 ${map.name}，然后在 n8n 表单里重新开始。` };
+    return { ok: true, status: 'login_required', ep, message: `请先在打开的 Chrome 里登录 ${map.name}，然后重新开始（n8n 表单，或再运行一次 fill / upload）。` };
   }
   if (!map.steps?.length) {
     return { ok: true, status: 'opened', ep, map_verified: false, done: [], skipped: [],
@@ -154,22 +208,41 @@ export async function submitted(cfg, id, upc) {
   const code = String(upc || '').replace(/\D/g, '');
   if (code && !/^\d{12,14}$/.test(code)) throw new Error('UPC 须为 12–14 位数字，或留空。');
   // The record in the folder comes first: it is what keeps this EP from being offered again.
-  writeFileSync(join(ep.folder, 'submitted.json'), JSON.stringify({ submitted_at: new Date().toISOString(), upc: code, distributor: ep.distributor, by: 'n8n' }, null, 2));
+  writeFileSync(join(ep.folder, 'submitted.json'), JSON.stringify({ submitted_at: new Date().toISOString(), upc: code, distributor: ep.distributor, by: 'release-helper' }, null, 2));
   try {
-    await studio(cfg, `/api/releases/${id}/submitted`, code ? { upc: code } : {});
+    await studio(cfg, `/api/releases/${ep.id}/submitted`, code ? { upc: code } : {});
     return { ok: true, status: 'submitted', ep, message: `已记录《${ep.title}》在 ${ep.distributor_name} 提交。` };
   } catch (error) {
     return { ok: true, status: 'submitted', ep, warning: `EP 文件夹已标记提交，但 Sing Studio 未能更新：${error.message}`, message: `已记录《${ep.title}》在 ${ep.distributor_name} 提交。` };
   }
 }
 
-async function main([command, arg, extra]) {
+// One step from a release in Sing Studio to a filled upload form: reuses a pack that is already in the
+// EP folder (unless --rebuild), otherwise makes it first. Submit stays with the person.
+export async function upload(cfg, given, { rebuild = false, ...options } = {}) {
+  const id = resolveId((await studioState(cfg)).releases || [], given);
+  const waiting = await list(cfg);
+  let made = null;
+  if (rebuild || !waiting.eps?.some((e) => e.id === id)) {
+    made = await build(cfg, id, options);
+    if (!made.ok) return made;
+  }
+  const filled = await fill(cfg, id);
+  return { ...filled, built: made ? { export_path: made.export_path, tracks: made.tracks, warnings: made.warnings } : 'reused',
+    message: (made ? `已生成发行包（${made.tracks} 首）。` : '沿用 EP 文件夹里已生成的发行包。') + filled.message };
+}
+
+async function main([command, ...args]) {
   const cfg = config();
+  const [arg, extra] = args.filter((a) => !a.startsWith('--'));
+  if (command === 'releases') return releases(cfg);
+  if (command === 'build') return build(cfg, arg);
+  if (command === 'upload') return upload(cfg, arg, { rebuild: args.includes('--rebuild') });
   if (command === 'list') return list(cfg);
   if (command === 'login') return login(cfg, arg || 'ditto');
   if (command === 'fill') return fill(cfg, arg);
   if (command === 'submitted') return submitted(cfg, arg, extra);
-  return { ok: false, error: 'usage: list | login <distributor> | fill <id> | submitted <id> [UPC]' };
+  return { ok: false, error: 'usage: releases | build <id> | upload <id> [--rebuild] | list | login <distributor> | fill <id> | submitted <id> [UPC]' };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
