@@ -34,7 +34,7 @@ class CatalogTest(unittest.TestCase):
                 request = controls.build_request({'controls_version': 1, 'mode': 'remix', 'caption': controls.build_caption(name), 'duration': 30,
                     'seed': 1, 'change_strength': 75, 'melody_mode': 'reference'}, 'SCORE', 'la', 6)
                 self.assertTrue(request['style'].startswith(info['tags']))
-                self.assertTrue(set(info.get('defaults', {})) <= {'mode', 'melody_mode', 'tempo', 'semitones'})
+                self.assertTrue(set(info.get('defaults', {})) <= {'mode', 'melody_mode', 'semitones'})
         self.assertEqual(len(controls.DEFAULT_STYLES), 20)
         self.assertEqual(controls.DEFAULT_STYLES[:10], ['R&B', 'Jazz', 'Lo-fi', 'Acoustic', 'Remix', 'Phonk', 'Hardstyle', 'Hardtekk', 'Soul', 'Funk'])
         self.assertTrue(all(s in controls.CATALOG['styles'] for s in controls.DEFAULT_STYLES))
@@ -53,16 +53,17 @@ class CatalogTest(unittest.TestCase):
         plain = {'mode': 'remix', 'melody_mode': 'reference', 'adjust': {'semitones': 0, 'tempo': 100, 'speed_mode': 'independent', 'reverb': 0}, 'gender': 'auto'}
         smart = controls.apply_smart_defaults
         result, applied = smart(plain, 'Vinahouse')
-        self.assertEqual(applied, {'mode': 'preserve', 'tempo': 115})
-        self.assertEqual((result['mode'], result['adjust']['tempo'], result['adjust']['semitones']), ('preserve', 115, 0))
-        self.assertEqual(plain['adjust']['tempo'], 100)
+        # Smart defaults never change the tempo (v1.8.2): a DJ style only keeps the original singer.
+        self.assertEqual(applied, {'mode': 'preserve'})
+        self.assertEqual((result['mode'], result['adjust']), ('preserve', plain['adjust']))
         self.assertEqual(smart(plain, 'vinahouse')[1], applied)
-        self.assertEqual(smart(plain, 'Vinahouse', ['mode'])[1], {'tempo': 115})
+        self.assertEqual(smart(plain, 'Vinahouse', ['mode'])[1], {})
         self.assertEqual(smart(plain, 'Vinahouse', ['adjust'])[1], {'mode': 'preserve'})
-        self.assertEqual(smart({**plain, 'adjust': {**plain['adjust'], 'tempo': 90}}, 'Vinahouse')[1], {'mode': 'preserve'})
-        self.assertEqual(smart({**plain, 'adjust': {**plain['adjust'], 'speed_mode': 'linked'}}, 'Vinahouse')[1], {'mode': 'preserve'})
-        self.assertEqual(smart({**plain, 'instrumental': True}, 'Vinahouse')[1], {'tempo': 115})
-        self.assertEqual(smart({**plain, 'adjust': None}, '抖音 DJ')[0]['adjust'], {'tempo': 110})
+        self.assertEqual(smart({**plain, 'adjust': {**plain['adjust'], 'tempo': 90}}, 'Vinahouse')[0]['adjust']['tempo'], 90)
+        self.assertEqual(smart({**plain, 'instrumental': True}, 'Vinahouse')[1], {})
+        self.assertIsNone(smart({**plain, 'adjust': None}, '抖音 DJ')[0]['adjust'])
+        for name, info in controls.CATALOG['styles'].items():
+            self.assertNotIn('tempo', info.get('defaults', {}), name)
         self.assertEqual(smart({**plain, 'mode': 'preserve'}, 'Trap')[1], {'mode': 'remix', 'melody_mode': 'free'})
         self.assertEqual(smart(plain, 'Hip-hop', ['melody_mode'])[1], {})
         self.assertEqual(smart({**plain, 'mode': 'preserve'}, 'Boom Bap', ['mode'])[1], {})
@@ -73,7 +74,7 @@ class CatalogTest(unittest.TestCase):
         self.assertEqual(smart(kid, 'Lo-fi')[1], {'semitones': 2})
         self.assertEqual(smart(kid, 'Trap')[1], {'melody_mode': 'free', 'semitones': 2})
         # A DJ remix keeps the original singer, so the kid voice and its key do not apply.
-        self.assertEqual(smart(kid, 'Funkot')[1], {'mode': 'preserve', 'tempo': 120})
+        self.assertEqual(smart(kid, 'Funkot')[1], {'mode': 'preserve'})
         self.assertEqual(smart({**kid, 'adjust': {**plain['adjust'], 'semitones': -1}}, 'Lo-fi')[1], {})
         self.assertEqual(smart({**kid, 'instrumental': True}, 'Lo-fi')[1], {})
 
@@ -142,11 +143,11 @@ class SmartBatchTest(unittest.TestCase):
         jazz, vina, trap = self.batch('smart-batch-12345678', ['Jazz', 'Vinahouse', 'Trap'], smart_defaults=True)
         configs = [self.config(j) for j in (jazz, vina, trap)]
         self.assertEqual([(c['mode'], c['melody_mode']) for c in configs], [('remix', 'reference'), ('preserve', 'reference'), ('remix', 'free')])
-        self.assertEqual([c['smart_defaults'] for c in configs], [{}, {'mode': 'preserve', 'tempo': 115}, {'melody_mode': 'free'}])
-        self.assertEqual(vina['smart_defaults'], {'mode': 'preserve', 'tempo': 115})
-        self.assertEqual(configs[1]['adjust']['tempo'], 115)
-        self.assertAlmostEqual(configs[1]['duration'], 30 / 1.15, places=3)
-        self.assertEqual(vina['output_name'], 'Vinahouse Song (Tempo 115%)')
+        self.assertEqual([c['smart_defaults'] for c in configs], [{}, {'mode': 'preserve'}, {'melody_mode': 'free'}])
+        self.assertEqual(vina['smart_defaults'], {'mode': 'preserve'})
+        self.assertIsNone(configs[1]['adjust'])
+        self.assertAlmostEqual(configs[1]['duration'], 30, places=3)
+        self.assertEqual(vina['output_name'], 'Vinahouse Song')
         # Analysis is shared only between versions with the same source settings.
         self.assertNotIn('reuse_from', configs[0])
         self.assertNotIn('reuse_from', configs[1])

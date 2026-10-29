@@ -1,3 +1,26 @@
+# Sing Studio v1.8.2 · 2026-10-29
+
+## 本次交付
+
+- 用户要求（2026-10-29）：“把版本 A B C D E F G 的显示改成数字，方便知道是哪首歌”，并“删除速度设置”。问答确认：数字用于界面上所有地方（旧作品也显示数字，A = 1、B = 2 …）；要删的速度设置是**风格智能默认里的速度**（用户截图里亚洲 DJ 版作品名带 “Tempo 105% / 110% / 115% / 120%”），不是变调变速、不是自动变速版本。
+- 界面 `App.jsx`：`letters` 改为 `numbers`（"1"–"20"），去掉 `versionLetter`，新增 `variantNumber`（字母 → 数字），`variantOrder` 改为按数字比较；所有显示字母的地方改为“版本 N”（版本数量选项、目标风格、补充要求、换声勾选与 `voiceText`、逐首风格、自定义风格对话框、确认对话框、队列行与勾选标签、作品卡片与 `kindBadge`、试听标签、全部风格说明）。智能默认相关文字改为不改变速度。
+- 后端：`styles.json` 六种亚洲 DJ 版的 `defaults` 去掉 `tempo`；`generation_controls.apply_smart_defaults` 只接受 `semitones`（风格与演唱者都一样），`unchanged` 只剩 `semitones`。后端保存的版本仍是字母（`variant`、`LETTERS`、`version_letter`、换声 `versions` 列表都不变），所以已有作品、队列与设置无需迁移。
+- 版本源、两个 package / lock、README、CHANGELOG 同步为 1.8.2；新增 `VALIDATION-v1.8.2.json`（`passed: false`）。`deploy-release.ps1` 文件清单无需变化（没有新文件）。
+
+## 本次验证（云端开发容器，Linux，无 YuE2 / Seed-VC / 应用电脑运行时）
+
+- 前端生产构建与 4 项打包测试通过。
+- 后端：`test_styles`（7）、`test_versions`（5）、`test_all_styles`（8）、`test_controls`（6）通过。其余测试需要应用电脑的本机运行时（`local-test/bin/ffmpeg.exe`、YuE2 样本等），在本容器里报错；用未改动的 main 跑结果完全相同，不是这次改动造成的。
+- 用真实 `service` 建一个 12 个版本的批次（慢摇、Vinahouse、Funkot、Jungle Dutch、Melbourne Bounce、抖音 DJ、Jazz、Lo-fi、R&B、Rap、Pop、Rock，统一降 1 个半音、智能默认开启）：DJ 风格的 `smart_defaults` 只有 `{"mode": "preserve"}`，名称如 `Vinahouse Lady Gaga - Poker Face (Lyrics) (Key -1)`，不再带 Tempo。
+- 用这份状态在无界面 Chrome 里打开构建后的界面：批量改编（“2 个版本 · 版本 1–2”“版本 1 · 目标风格”、智能默认说明）、生成队列（版本 1 / 2 / 3）、我的作品（版本 4 / 5 / 6 / 7 按数字排序），无控制台错误。
+- **未完成：** 应用电脑上的部署与实际使用；v1.8.0 起的应用电脑实测（adjust、voice、variety）仍未完成。
+
+## 在应用电脑上
+
+- 与 v1.8.0 相同（见下面 v1.8.0 一节）。只更新界面与智能默认时，也可以在 `npm run build` 之后按原流程用 `deploy-release.ps1` 更新（先确认队列空闲）。
+
+---
+
 # Sing Studio v1.8.1 · 2026-10-26
 
 ## 本次交付
