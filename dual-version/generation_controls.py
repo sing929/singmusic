@@ -88,8 +88,9 @@ def style_info(style):
 
 def apply_smart_defaults(item, style, explicit=()):
     """One version's settings after its style's and singer's smart defaults, plus what they changed.
-    A style's mode and melody choice replace the shared setting; tempo and key are only filled in
-    while still unchanged. Whatever the song sets for itself (`explicit`) is never touched."""
+    A style's mode and melody choice replace the shared setting; a singer's key is only filled in
+    while still unchanged. Smart defaults never change the tempo. Whatever the song sets for itself
+    (`explicit`) is never touched."""
     result, applied = dict(item), {}
     defaults = style_info(style).get('defaults', {})
     if 'mode' in defaults and 'mode' not in explicit and not result.get('instrumental') and result.get('mode', 'remix') != defaults['mode']:
@@ -99,13 +100,13 @@ def apply_smart_defaults(item, style, explicit=()):
     if ('melody_mode' in defaults and 'melody_mode' not in explicit and (vocal or result.get('instrumental'))
             and result.get('melody_mode', 'reference') != defaults['melody_mode']):
         result['melody_mode'] = applied['melody_mode'] = defaults['melody_mode']
-    shifts = {k: v for k, v in defaults.items() if k in ('tempo', 'semitones')}
+    shifts = {k: v for k, v in defaults.items() if k == 'semitones'}
     # A singer default (the kid voice's higher key) only applies where someone new sings.
     if vocal:
-        shifts.update(CATALOG['singers'].get(result.get('gender', 'auto'), {}).get('defaults', {}))
+        shifts.update({k: v for k, v in CATALOG['singers'].get(result.get('gender', 'auto'), {}).get('defaults', {}).items() if k == 'semitones'})
     if shifts and 'adjust' not in explicit:
         adjust = dict(result.get('adjust') or {})
-        unchanged = {'semitones': 0, 'tempo': 100}
+        unchanged = {'semitones': 0}
         if adjust.get('speed_mode', 'independent') == 'independent':
             for key, value in shifts.items():
                 if adjust.get(key, unchanged[key]) == unchanged[key]:

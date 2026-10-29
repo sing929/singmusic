@@ -59,6 +59,7 @@
 !/dual-version/test_release.py
 !/dual-version/VALIDATION-v1.8.0.json
 !/dual-version/VALIDATION-v1.8.1.json
+!/dual-version/VALIDATION-v1.8.2.json
 !/automation/
 /automation/*
 !/automation/README.md

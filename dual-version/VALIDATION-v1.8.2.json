@@ -1,0 +1,64 @@
+{
+  "version": "1.8.2",
+  "real_local_inference": false,
+  "subjective_listening_verified": false,
+  "passed": false,
+  "dev_checks_passed": true,
+  "required_benchmarks": [
+    "adjust",
+    "voice",
+    "variety"
+  ],
+  "dev_environment": "Cloud development container (Linux, Python 3, Node) without YuE2, Seed-VC or the app-PC local-test runtime; only the suites that do not need that runtime were run.",
+  "distributor_rules_source": "Ditto Music help centre as read on 2026-10-24 (audio 16-bit / 44.1 kHz minimum stereo WAV or MP3; artwork JPG 3000x3000 RGB under 10 MB with only artist and release title; lyrics format; track mix version field; AI declaration No / Partially / Entirely AI with per-credit No / Partly / Fully AI). OFFstep's upload form is not verified.",
+  "frontend_build": true,
+  "packaging_tests": 4,
+  "backend_regressions": 8,
+  "control_regressions": 6,
+  "instrumental_regressions": 6,
+  "adjust_regressions": 8,
+  "versions_regressions": 5,
+  "voice_regressions": 9,
+  "speed_variant_regressions": 7,
+  "style_regressions": 7,
+  "kid_voice_regressions": 4,
+  "dj_regressions": 6,
+  "suite_regressions": 4,
+  "all_styles_regressions": 8,
+  "release_regressions": 8,
+  "regressions_total": 86,
+  "test_environment_note": "On a Chinese-locale Windows console, run the tests with PYTHONUTF8=1; otherwise test_voice.py's self-test reads the runner's Chinese stderr as GBK and errors (an environment issue that predates v1.6.0).",
+  "checks": [
+    "Naming: store title case for Latin titles (Chinese untouched), track numbers stripped from imported names, mix versions from style group (Asian DJ / EDM -> Remix, others -> Version) plus suite part, kid vocal, key/tempo presets (Speed Up -> Sped Up) and DJ edits.",
+    "Lyrics: section tags and LRC time stamps removed, no punctuation at line ends, capitals at line starts, all-caps lines lowered, (x2) repeats written out, section repeat markers reported.",
+    "AI answers: composer No AI unless free melody (Partly), lyricist No AI for vocal tracks, performer No AI for preserve-original / Partly AI for voice swap / Fully AI for YuE2 vocals, producer Fully AI; mixes take the strongest answer; release level Partially AI.",
+    "Review: required fields, release date after today with a two-week warning, duplicate title + version, a work already in an earlier or submitted release blocks (the later draft yields), Content ID warning for edits of works on another distributor, more than six versions of one song, recognized lyrics and YuE2 vocals warnings; Single / EP / Album by track count and length.",
+    "Pack with the real FFmpeg: 44.1 kHz / 16-bit stereo WAVs within 0.5 s of the work, longest silence and peak reported, snippet start from the loudest 30 s, 3000x3000 RGB JPEG cover under 10 MB, Ditto-format lyrics, metadata.json and the filled checklist.",
+    "Routes: create (distributor alternates, details copied from the last release), add works with suggested names, edit, reorder, cover preview as image/jpeg, background build, edit after build returns to draft, submitted locks all but notes / UPC, reopen, delete frees the works, restore, interrupted build marked failed at start-up.",
+    "EP export folder: packs copied whole (hidden .partial then rename) to <export>/<EP title>/; a same-name folder of another release is kept and a numbered name used; a renamed release replaces its own older copy; relative paths rejected.",
+    "automation (Node 24, headless Chrome): list shows only packed, unsubmitted EPs; submitted writes submitted.json and marks the release in Sing Studio with the UPC; the Ditto map fills a mock release builder (fields, select, AI radio, cover, multi-file audio, per-track title / version / lyrics, date) and every attempt to press a Submit-like button is refused.",
+    "CLI: releases lists every non-deleted release with id, status and problems; ids resolve from a unique prefix of 6+ characters (deleted releases excluded, ambiguous or unknown prefixes rejected); build waits for the pack, reports problems without building, refuses without an EP export folder; upload builds only when the EP folder lacks the current pack (or with --rebuild) and then fills the form without submitting."
+  ],
+  "browser_verified": [
+    "Batch settings: version count options read \"N 个版本 · 版本 1–N\", style pickers \"版本 1 · 目标风格\", smart-default note says tempo is not changed",
+    "Queue: badges 版本 1 / 2 / 3 for stored variants A / B / C; names end with (Key -1) and no Tempo",
+    "My works: badges 版本 4–7 sorted numerically; no console errors"
+  ],
+  "not_done": [
+    "Deploying v1.8.2 on the app PC and checking it there",
+    "Real YuE2 / UVR / Seed-VC runs on the app PC (i7-14700F + RTX 5070): benchmark_adjust.py, benchmark_voice.py and benchmark_variety.py with --validation dual-version/VALIDATION-v1.8.1.json",
+    "Checking automation/maps/ditto.json against the live Ditto Release Builder (verified: false) and writing an OFFstep map; installing n8n on the app PC",
+    "A real upload to Ditto Music or OFFstep with a pack (field order of the live Release Builder, OFFstep's form)",
+    "Listening to real generated works"
+  ],
+  "automation_tests": 5,
+  "changes_since_1_8_1": "Interface shows version numbers (1, 2, 3 …) instead of letters; stored variants stay letters and are converted for display. Style smart defaults no longer change tempo (tempo removed from the six Asian DJ styles; apply_smart_defaults only fills semitones).",
+  "regressions_run_this_version": {
+    "style_regressions": 7,
+    "versions_regressions": 5,
+    "all_styles_regressions": 8,
+    "control_regressions": 6,
+    "packaging_tests": 4
+  },
+  "regressions_not_run_here": "test_adjust, test_backend, test_dj, test_instrumental, test_kid_voice, test_release, test_speed_variants, test_suite, test_voice need the app-PC runtime (local-test/bin/ffmpeg.exe, samples); they error identically on unchanged main in this container."
+}
