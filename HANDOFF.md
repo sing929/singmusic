@@ -1,3 +1,32 @@
+# 待办 · Ditto 首次真实上传（2026-11-13，未交付，版本仍为 1.8.2）
+
+> 本节只是交接说明，没有改代码，所以没有提升版本号。完成后按 AGENTS.md 正式交付（release.json、package / lock、CHANGELOG、本文件）。
+
+## 用户要求
+
+- 2026-11-13：“查看把我的音乐专辑上传到 https://dashboard.dittomusic.com/music 的步骤，可以从我的 Chrome 看”，随后要求“在本机电脑上重新做一次，写交接”。
+- 云端会话连不上用户的 Chrome（没有 Claude in Chrome 扩展连接；Remote Control 列表里 DESKTOP-C8EDNNF 的文件夹都不能给云端会话用），所以**没有看到真实的 Ditto 页面**。这个任务必须在应用电脑上、用本机 Claude Code（或桌面应用）加已连接的 Claude in Chrome 扩展完成。
+
+## 在应用电脑上要做的
+
+1. 拉取本分支，确认 Sing Studio 队列空闲；按 v1.8.0 一节完成未做的安装（`automation` 里 `npm install`、“发行上架”设置 EP 导出文件夹）。
+2. 打开上传用的 Chrome：`node release-helper.mjs login ditto`，**用户本人登录** Ditto（两步验证 / 验证码由用户完成）。
+3. 用 Claude in Chrome（或连接调试端口 9333 的上传用 Chrome）打开 `https://dashboard.dittomusic.com/music`，走一遍新建发行（Release Builder）：记录每一步的实际按钮文字、字段标签、下拉选项、文件上传控件（封面 / 音频的 `accept`）、AI 声明位置（第 2 步 No / Partially / Entirely AI，以及每首 Track Credits 的 No / Partly / Fully AI）、Track mix version、歌词、发行日期。**不点 Submit、不同意条款、不付款**。
+4. 按实际页面修改 `automation/maps/ditto.json`：
+   - `start_url` 现为 `https://dittomusic.com/`，改为 `https://dashboard.dittomusic.com/music`（核对登录后的真实入口）；`login_patterns` 按实际登录页地址更新。
+   - 当前步骤是按帮助中心字段名猜的：Create New → Create Release → Standard Release → Release title / Primary artist / Record label / Primary genre / Secondary genre / Language / Copyright / Year → 封面 / 音频上传 → AI 勾选 → 每首曲目（`for_each: tracks`）→ Release date。逐项对照改正，补上缺的步骤（逐首 AI 等级、mix version、歌词、露骨歌词、署名）。
+   - 全部核对后把 `verified` 改为 `true`。
+5. 用一个真实发行跑 `node release-helper.mjs releases` → `upload <编号>`，核对 `upload-log.json` 里“没找到”的项为零或已解释；**由用户本人核对并点 Submit**，然后 `submitted <编号> [UPC]`。
+6. 更新 `automation/test/mock-builder.html` 使其与真实页面结构一致，`npm test` 通过。
+7. 把实际字段顺序、被平台退回的原因写进本文件；正式交付时提升版本（如 1.8.3）并同步 release.json、两个 package / lock、CHANGELOG、README（automation）。
+
+## 注意
+
+- Ditto 禁止声音克隆 / 模仿，不接受刷量式重复版本；只发行用户本人声音的版本，每个 EP 只走一个平台。
+- 不上传歌曲、歌词、Cookie、截图里的账户信息到 Git；验证报告须脱敏。
+
+---
+
 # Sing Studio v1.8.2 · 2026-10-29
 
 ## 本次交付
