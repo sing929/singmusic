@@ -3,7 +3,8 @@
 // submitting, paying or publishing; the final Submit always stays with the person.
 import { resolve as resolvePath } from 'node:path';
 
-export const FORBIDDEN = /\b(submit|distribute|release now|publish|pay|payment|checkout|purchase|buy|place order|confirm order|agree)\b|提交|付款|支付|购买|发布|同意/i;
+// Ditto's final button on the Review step is "Complete release"; its basket link is "Proceed to Checkout".
+export const FORBIDDEN = /\b(submit|distribute|release now|complete release|publish|pay|payment|checkout|purchase|buy|place order|confirm order|agree)\b|提交|付款|支付|购买|发布|同意/i;
 
 const escape = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const pattern = (text) => new RegExp(escape(text), 'i');
@@ -25,7 +26,8 @@ export function locate(page, target) {
     : target.text ? page.getByText(pattern(target.text))
     : target.css ? page.locator(target.css) : null;
   if (!all) throw new Error('step target needs label, role, placeholder, text or css');
-  return all.nth(Math.max(0, Number(target.nth || 1) - 1));
+  // "visible": only elements shown now (Ditto keeps hidden copies of dialogs and dropdown options).
+  return (target.visible ? all.filter({ visible: true }) : all).nth(Math.max(0, Number(target.nth || 1) - 1));
 }
 
 // Hands Chrome the file paths itself (DevTools DOM.setFileInputFiles): Chrome runs on this PC and reads
@@ -65,20 +67,52 @@ async function runStep(page, step, data, folder) {
   const timeout = step.timeout || (step.optional ? 3000 : 8000);
   if (step.action === 'goto') return page.goto(fillIn(step.url, data), { waitUntil: 'domcontentloaded' });
   if (step.action === 'wait') return page.waitForTimeout(Math.min(step.ms || 1000, 15000));
+  // "unless": skip when this is already shown (Ditto opens the next track's editor by itself, and its
+  // Edit button would close it again).
+  if (step.unless && await page.locator(fillIn(step.unless, data)).filter({ visible: true }).count()) return;
   const locator = locate(page, Object.fromEntries(Object.entries(step.target || {}).map(([k, v]) => [k, fillIn(v, data)])));
-  await locator.waitFor({ state: step.action === 'upload' ? 'attached' : 'visible', timeout });
+  await locator.waitFor({ state: step.action === 'upload' || step.force ? 'attached' : 'visible', timeout });
   const value = fillIn(step.value, data);
   if (step.action === 'fill') return locator.fill(value, { timeout });
   if (step.action === 'select') return locator.selectOption({ label: value }, { timeout });
-  if (step.action === 'check') return value === 'false' ? locator.uncheck({ timeout }) : locator.check({ timeout });
+  if (step.action === 'check') {
+    // Styled toggles hide the real checkbox under a label, so "force" ticks it without a visible box.
+    if ((await locator.isChecked()) === (value !== 'false')) return;
+    return value === 'false' ? locator.uncheck({ timeout, force: !!step.force }) : locator.check({ timeout, force: !!step.force });
+  }
+  // Press the target (e.g. a calendar's "Next month") until the "until" element is shown, at most 24 times.
+  if (step.action === 'click_until') {
+    const goal = page.locator(fillIn(step.until, data)).filter({ visible: true });
+    for (let i = 0; i < 24; i++) {
+      if (await goal.count()) return;
+      if (FORBIDDEN.test(await nameOf(locator))) throw new Error('refused to press a submit-like button');
+      await locator.click({ timeout });
+      await page.waitForTimeout(300);
+    }
+    if (await goal.count()) return;
+    throw new Error(`not shown after 24 presses: ${fillIn(step.until, data)}`);
+  }
+  // Search dropdowns (vue-multiselect): open, type the value, take the highlighted match.
+  if (step.action === 'choose') {
+    if (!value) throw new Error('no value to choose');
+    await locator.click({ timeout, force: !!step.force });
+    await page.keyboard.type(value, { delay: 20 });
+    await page.waitForTimeout(step.settle || 800);
+    return page.keyboard.press('Enter');
+  }
   if (step.action === 'upload') {
     const files = (step.files_from ? data[step.files_from] || [] : Array.isArray(step.files) ? step.files : [step.files]).map((f) => fillIn(f, data)).filter(Boolean);
-    return attach(page, locator, files.map((f) => resolvePath(folder, f)));
+    await attach(page, locator, files.map((f) => resolvePath(folder, f)));
+    if (step.settle) await page.waitForTimeout(step.settle);
+    return;
   }
   if (step.action === 'click') {
     const name = await nameOf(locator);
     if (FORBIDDEN.test(name) || FORBIDDEN.test(step.name || '')) throw new Error(`refused to press "${name.trim().slice(0, 60)}": submitting stays with you`);
-    return locator.click({ timeout });
+    await locator.click({ timeout, force: !!step.force });
+    // Pages that load or upload after a click (Ditto's builder) need a moment before the next step.
+    if (step.settle) await page.waitForTimeout(step.settle);
+    return;
   }
   throw new Error(`unknown action ${step.action}`);
 }

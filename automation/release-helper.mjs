@@ -17,6 +17,7 @@ import { runMap } from './fill-engine.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CREDIT_TEXT = { none: 'No AI', partly: 'Partly AI', fully: 'Fully AI' };
 const RELEASE_AI = { none: 'No AI', partially: 'Partially AI', entirely: 'Entirely AI' };
+const AI_VALUE = { none: 'not_ai', partially: 'partially_ai', entirely: 'entirely_ai' };
 
 export function config() {
   const file = join(HERE, 'config.json');
@@ -155,12 +156,15 @@ export function loadMap(distributor, folder = config().maps) {
 export function formData(folder) {
   const meta = readJson(join(folder, 'metadata.json'));
   const tracks = meta.tracks.map((t) => ({
-    ...t, explicit_text: t.explicit ? 'Yes' : 'No', lyrics: t.lyrics_file ? readFileSync(join(folder, t.lyrics_file), 'utf8').trim() : '',
+    ...t, explicit_text: t.explicit ? 'Yes' : 'No', explicit_flag: t.explicit ? 'true' : 'false', lyrics: t.lyrics_file ? readFileSync(join(folder, t.lyrics_file), 'utf8').trim() : '',
     has_lyrics: t.lyrics_file ? 'true' : 'false', snippet_text: `${Math.floor(t.snippet_start / 60)}:${String(t.snippet_start % 60).padStart(2, '0')}`,
     ai: Object.fromEntries(Object.entries(t.ai_credits).map(([role, v]) => [role, v ? CREDIT_TEXT[v] : ''])),
     credit_name: meta.release.credit_name || meta.release.artist,
   }));
-  const release = { ...meta.release, label: meta.release.label || meta.release.artist, ai_use_text: RELEASE_AI[meta.release.ai_use] || '' };
+  // Ditto's language list uses the English name alone ("Chinese (Mandarin)"), and the AI radios use
+  // not_ai / partially_ai / entirely_ai as values.
+  const release = { ...meta.release, label: meta.release.label || meta.release.artist, ai_use_text: RELEASE_AI[meta.release.ai_use] || '',
+    language_label: String(meta.release.language_name || '').split(' · ')[0], ai_value: AI_VALUE[meta.release.ai_use] || '' };
   return { release, tracks, track_files: tracks.map((t) => t.file), cover: 'cover.jpg', distributor: meta.distributor, release_id: meta.release_id };
 }
 

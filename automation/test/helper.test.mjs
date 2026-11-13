@@ -76,8 +76,8 @@ after(() => {
 
 test('templates and the submit guard', () => {
   assert.equal(fillIn('{{release.title}} / {{track.version}} / {{x.y}}', { release: { title: 'A' }, track: { version: 'B' } }), 'A / B / ');
-  for (const name of ['Submit release', 'Distribute', 'Pay now', 'Checkout', '提交', 'Publish']) assert.ok(FORBIDDEN.test(name), name);
-  for (const name of ['Create Release', 'Next', 'Save and continue', 'Edit', 'Upload audio']) assert.ok(!FORBIDDEN.test(name), name);
+  for (const name of ['Submit release', 'Distribute', 'Pay now', 'Checkout', '提交', 'Publish', 'Complete release', 'Proceed to Checkout']) assert.ok(FORBIDDEN.test(name), name);
+  for (const name of ['Create Release', 'Next', 'Save and continue', 'Edit', 'Upload audio', 'Get Started', 'Confirm Title', 'Save Metadata', 'I Understand', 'Confirm']) assert.ok(!FORBIDDEN.test(name), name);
 });
 
 test('lists only packed, unsubmitted EPs and records a submission', async () => {
@@ -100,7 +100,7 @@ test('lists only packed, unsubmitted EPs and records a submission', async () => 
   rmSync(join(folder, 'submitted.json'));
 });
 
-test('fills the mock builder with the Ditto map and never submits', { timeout: 120000 }, async (t) => {
+test('fills the mock builder with the Ditto map and never submits', { timeout: 240000 }, async (t) => {
   if (!cfg.chrome) return t.skip('Chrome not installed');
   const { chromium } = await import('playwright-core');
   const browser = await chromium.launch({ executablePath: cfg.chrome, headless: true });
@@ -109,24 +109,37 @@ test('fills the mock builder with the Ditto map and never submits', { timeout: 1
     await page.goto(pathToFileURL(join(import.meta.dirname, 'mock-builder.html')).href);
     const result = await runMap(page, loadMap('ditto'), formData(folder), folder);
     assert.equal(result.status, 'filled', JSON.stringify(result));
-    assert.ok(result.skipped.includes('Create New') && result.skipped.includes('Copyright year'));
+    // Only steps that are not needed here may be skipped (second title check, no secondary genre, no lyrics).
+    for (const name of result.skipped) assert.match(name, /review title|confirm title|Secondary genre|Track 2 lyrics/, name);
     const value = (id) => page.locator('#' + id).inputValue();
+    const chosen = (id) => page.locator(`.multiselect:has([id="${id}"]) .multiselect__single`).textContent();
     assert.equal(await value('title'), 'Summer Wind');
-    assert.equal(await value('artist'), 'Boss Sing');
-    assert.equal(await value('label'), 'Boss Sing');
-    assert.equal(await value('language'), 'Chinese (Mandarin) · 中文');
+    assert.equal(await value('copyright'), 'Boss Sing');
+    assert.equal(await value('production'), 'Boss Sing');
+    assert.equal(await chosen('primaryGenre.id'), 'Pop');
+    assert.equal(await chosen('language.id'), 'Chinese (Mandarin)');
+    assert.equal(await page.locator('#artist').textContent(), 'Boss Sing');
+    assert.equal(await page.locator('#AudioUploader').evaluate((el) => el.files.length), 2);
+    assert.equal(await page.locator('body').getAttribute('data-art'), 'cover.jpg');
+    assert.equal(await page.locator('input[value=partially_ai]').isChecked(), true);
+    const rows = await page.locator('#tracks > div[data-t]').evaluateAll((els) => els.map((e) => [e.dataset.t, e.dataset.v, e.dataset.l, e.dataset.c, e.dataset.ai]));
+    const ai = JSON.stringify(['No AI', 'No AI', 'Fully AI', 'Partly AI']);
+    assert.deepEqual(rows, [['Wind', 'Jazz Version', 'Hello wind', 'Boss Sing/Boss Sing/Boss Sing/Boss Sing', ai], ['Wind', 'House Remix', '', 'Boss Sing/Boss Sing/Boss Sing/Boss Sing', ai]]);
     assert.equal(await value('date'), '2026-12-01');
-    assert.equal(await page.locator('#audio').evaluate((el) => el.files.length), 2);
-    assert.equal(await page.locator('#art').evaluate((el) => el.files[0].name), 'cover.jpg');
-    assert.equal(await page.locator('input[value=partially]').isChecked(), true);
-    const rows = await page.locator('#tracks > div[data-t]').evaluateAll((els) => els.map((e) => [e.dataset.t, e.dataset.v, e.dataset.l || '']));
-    assert.deepEqual(rows, [['Wind', 'Jazz Version', 'Hello wind'], ['Wind', 'House Remix', '']]);
+    assert.equal(await page.locator('#StandardDistro').isChecked(), true);
+    assert.equal(await page.locator('#PriorityDistro').isChecked(), false);
+    assert.equal(await page.locator('#all').isChecked(), true);
+    assert.equal(await page.locator('#complete').isVisible(), true);
+    assert.equal(await page.locator('#state').textContent(), 'draft');
+    // Ditto's final button is never pressed, even by a map that asks for it.
+    const final = await runMap(page, { steps: [{ name: 'Finish', action: 'click', target: { role: 'button', name: 'Complete release' } }] }, {}, folder);
+    assert.equal(final.status, 'stopped');
     assert.equal(await page.locator('#state').textContent(), 'draft');
     // A map that tries to press Submit is refused and stops there.
-    const refused = await runMap(page, { steps: [{ name: 'Submit', action: 'click', target: { role: 'button', name: 'Submit release' } }] }, {}, folder);
+    const refused = await runMap(page, { steps: [{ name: 'Submit', action: 'click', target: { css: '#complete' } }] }, {}, folder);
     assert.equal(refused.status, 'stopped');
     assert.match(refused.reason, /refused/);
-    const sneaky = await runMap(page, { steps: [{ name: 'Next', action: 'click', target: { css: '#submit' }, optional: true }] }, {}, folder);
+    const sneaky = await runMap(page, { steps: [{ name: 'Next', action: 'click', target: { css: '#complete' }, optional: true }] }, {}, folder);
     assert.equal(sneaky.status, 'stopped');
     assert.equal(await page.locator('#state').textContent(), 'draft');
   } finally {
@@ -155,7 +168,8 @@ test('release ids, the releases list and build', { timeout: 60000 }, async () =>
   assert.equal(calls.at(-1).url, `/api/releases/${'b'.repeat(32)}/build`);
 });
 
-test('upload builds when needed, then fills the form without submitting', { timeout: 180000 }, async (t) => {
+// Two full runs of the map, each with the waits the live Ditto pages need (about a minute each).
+test('upload builds when needed, then fills the form without submitting', { timeout: 420000 }, async (t) => {
   if (!cfg.chrome) return t.skip('Chrome not installed');
   const maps = join(root, 'maps');
   mkdirSync(maps, { recursive: true });
@@ -177,7 +191,7 @@ test('upload builds when needed, then fills the form without submitting', { time
     const browser = await chromium.connectOverCDP(`http://127.0.0.1:${own.port}`);
     const page = browser.contexts()[0].pages().filter((p) => p.url().includes('mock-builder')).at(-1);
     assert.equal(await page.locator('#state').textContent(), 'draft');
-    assert.equal(await page.locator('#audio').evaluate((el) => el.files.length), 2);
+    assert.equal(await page.locator('#AudioUploader').evaluate((el) => el.files.length), 2);
     await browser.close();
   } finally {
     // The upload Chrome was started by the helper and outlives it; close it for the test.

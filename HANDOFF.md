@@ -1,11 +1,45 @@
-# 待办 · Ditto 首次真实上传（2026-11-13，未交付，版本仍为 1.8.2）
-
-> 本节只是交接说明，没有改代码，所以没有提升版本号。完成后按 AGENTS.md 正式交付（release.json、package / lock、CHANGELOG、本文件）。
+# 进展 · Ditto 映射已按真实页面重写（2026-11-13，未正式交付，版本仍为 1.8.2）
 
 ## 用户要求
 
-- 2026-11-13：“查看把我的音乐专辑上传到 https://dashboard.dittomusic.com/music 的步骤，可以从我的 Chrome 看”，随后要求“在本机电脑上重新做一次，写交接”。
-- 云端会话连不上用户的 Chrome（没有 Claude in Chrome 扩展连接；Remote Control 列表里 DESKTOP-C8EDNNF 的文件夹都不能给云端会话用），所以**没有看到真实的 Ditto 页面**。这个任务必须在应用电脑上、用本机 Claude Code（或桌面应用）加已连接的 Claude in Chrome 扩展完成。
+- 2026-11-13（本机 Claude Code 桌面应用，DESKTOP-L0BCUM2，i9-10900KF + RTX 2060，**不是应用电脑**）：“读交接继续”，随后“把 singmusic 仓库下载到这台电脑，演示从头到上传到平台的完整步骤”。
+
+## 本次完成
+
+- 本机没有 Git / Python / YuE2：仓库以分支 zip 下载到 `Documents\singmusic`（不是 Git 工作区），Node 22 便携版放在 `%LOCALAPPDATA%\SingStudio\node`。Sing Studio 后端无法运行，所以用 `Documents\singmusic-demo\make-demo-ep.ps1` 生成演示 EP（2 首 30 秒测试音 WAV、3000×3000 封面、歌词、`metadata.json`），`demo-studio.mjs` 在 18765 端口模拟 `/api/state`。这两个脚本不在仓库里。
+- 用户登录 Ditto 后，看过真实 Release Builder（用测试草稿），重写 `automation/maps/ditto.json`，`node release-helper.mjs upload de0de0` 一条命令在真实 Ditto 上从仪表盘填到第 5 步 Review（71 步完成，6 步按预期跳过，约 84 秒），停在 **Complete release** 前。
+- `fill-engine.mjs`：新增 `choose`（vue-multiselect：点开、输入、回车）、`click_until`（如日历的 Next month，最多 24 次）、目标 `visible: true`（Ditto 页面里有隐藏的重复对话框与下拉项）、步骤 `force`、`settle`（点击 / 上传后等待）、`unless`（某元素已显示就跳过）；`check` 已是目标状态时不再点击。`FORBIDDEN` 加入 `complete release`（Ditto 最后的按钮）。
+- `release-helper.mjs` 的 `formData`：`release.language_label`（`Chinese (Mandarin) · 中文` → `Chinese (Mandarin)`）、`release.ai_value`（`not_ai` / `partially_ai` / `entirely_ai`）、`track.explicit_flag`。
+- `test/mock-builder.html` 按真实结构重写（五步、标题检查对话框、multiselect、AI 下拉、保存后自动打开下一首、日历、Standard / Priority Distro、Complete release），`npm test` 5 项通过（Windows，本机 Chrome 无界面）。
+
+## 真实 Ditto Release Builder（2026-11-13，已登录）
+
+1. 仪表盘 `https://dashboard.dittomusic.com/music` → **Create Release** → 对话框 **Release Title** → **Get Started**，草稿地址 `/releases/<编号>/music/builder/1`。未登录时跳到 `login.dittomusic.com`（有 reCAPTCHA）。
+2. **1 Upload**：`#AudioUploader`（wav / mp3 / flac，可多选）→ “Add a License” 提示（**I Understand**）→ `a.next` → 封面 `#ArtworkUploader`（JPG，正方形，≥ 1400×1400，≤ 10 MB）→ `a.next`。
+3. **2 Details**：曲名取自文件名，`01 - …` 这类标题会弹 **Review Track Title**（`input[name=confirmTitle]` + **Confirm Title**），进入第 2 步时弹第 1 首，保存第 1 首后弹下一首。字段：`copyrightHolder` / `productionHolder`、年份下拉、Record Label（默认 Independent，没有改）、`#primaryGenre.id` / `#secondaryGenre.id` / `#language.id`（multiselect）、AI 单选 `input[name=ai-contribution]`、Artist Type、**+Add Artists** 打开 “Your Artists”（只能选账户里已有的艺人，目前 黄泽勋、黄诗涵；至少一个 Plan Artist）→ **Confirm**。曲目：**Edit Metadata**（开关式，再点会关上；保存后 Ditto 自动打开下一首）→ Track Title、`mixVersion`、ISRC（自动生成）、Add Lyrics?（`textarea[name=lyrics]` 或上传 .txt / .docx）、explicit、Track Credits 四类 Composer / Songwriter / Producer/Engineer / Performer，每类名字 + **AI Contribution Type**（No / Partly / Fully AI，Release 选 Partially AI 后出现），后三类还有 Role（multiselect）→ **Save Metadata**。没保存就离开会弹 “Unsaved changes”。
+4. **3 Schedule**：日历 `Select date`（@vuepic/vue-datepicker，格子 `#dp-YYYY-MM-DD`，10 天内的日期只限 Priority Distro）、**Priority Distro +$40** / **Standard Distro（Included）**、发行时间、国家限制、是否发行过；付费附加（排行榜注册、预售、Release protection）。映射只选 Standard，不勾任何付费项。
+5. **4 Stores**：默认已选全部 62 个标准商店（Select All Stores），Advanced Stores（YouTube Content ID 等）未选；映射保持默认。
+6. **5 Review**：摘要（Release type 由 Ditto 判定，2 首显示为 Single；Price band Mid），按钮 **Complete release**——**由用户本人点**，之后可能进入付款 / 篮子（未查看）。
+
+## 发现的问题（需要改 Sing Studio 或注意）
+
+- **署名必须“名 + 姓”**：Track Credits 的名字没有空格会报 “First name and last name are required.”。中文名（如 黄诗涵）须写成带空格的形式；Sing Studio 的“署名真名”应提示或校验（本次演示用占位名 “Demo Tester”）。
+- **艺人名必须是 Ditto 账户里已有的艺人**（Your Artists 列表），否则 “Pick artist” 会停下。
+- 发行包文件名 `01 - 歌名 (版本).wav` 一定会触发标题检查；映射已处理，但也可以考虑改文件名。
+- Ditto 会改大小写（`Lo-fi` → `Lo-Fi`）。
+- 演示封面里写了账户名 WCY Mix 而不是艺人名，真实发行的封面须与艺人名一致（`release_pack.make_cover` 已按艺人名生成）。
+- 测试草稿 6886054（手动查看）、6886096（调试）、6886135（一条命令完整跑到 Review）都没有点 Complete release，按用户要求已在仪表盘删除（In Progress 卡片上的删除图标 → Delete Release? → Delete）；12 个已上线发行未改动。
+
+## 还要做的
+
+1. 在应用电脑上用 Sing Studio 生成的真实发行跑一次 `upload <编号>`（艺人名用 Ditto 已有艺人、署名真名带空格），核对 `upload-log.json`；**用户本人核对并点 Complete release**，然后 `submitted <编号> [UPC]`。通过后把 `verified` 改为 `true`。
+2. Sing Studio“发行上架”：署名真名提示 / 校验“名 姓”；艺人名提示须与 Ditto 艺人一致。
+3. `upload-log.json` 把预期跳过（标题检查没出现、无副风格、无歌词）也算“没找到”，结果页提示会误导，可改为单独列出。
+4. 正式交付：提升版本（如 1.8.3），同步 release.json、两个 package / lock、CHANGELOG、`automation/README.md`（字段映射一节、新动作 `choose` / `click_until` / `unless` / `visible` / `force` / `settle`）。本次改动还没有提交到 Git（本机没有 Git）。
+
+## 原交接（2026-11-13 云端会话）里的步骤
+
+> 下面是原来的待办，第 2–4、6 步已在上面完成，第 5、7 步仍待做。
 
 ## 在应用电脑上要做的
 

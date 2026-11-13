@@ -1,47 +1,173 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>Mock release builder</title></head>
+<head><meta charset="utf-8"><title>Mock release builder</title>
+<style>
+  [hidden] { display: none !important; }
+  .modal { border: 2px solid #333; padding: 8px; margin: 8px 0; }
+  .multiselect { border: 1px solid #999; padding: 4px; min-height: 20px; cursor: pointer; }
+  .multiselect__input { width: 160px; }
+  .dropdown-menu { display: none; list-style: none; }
+  .dropdown.open > .dropdown-menu { display: block; }
+</style></head>
 <body>
-  <!-- A stand-in for a distributor's release builder, used only by the tests. -->
-  <button id="create">Create Release</button>
-  <form id="builder" hidden>
-    <label>Release title <input id="title"></label>
-    <label>Primary artist <input id="artist"></label>
-    <label>Record label <input id="label"></label>
-    <label>Primary genre <select id="genre"><option>Pop</option><option>Dance</option></select></label>
-    <label>Language <select id="language"><option>English · 英语</option><option>Chinese (Mandarin) · 中文</option></select></label>
-    <label>Artwork <input id="art" type="file" accept="image/jpeg"></label>
-    <label>Audio <input id="audio" type="file" accept="audio/wav" multiple></label>
-    <fieldset><legend>AI use</legend>
-      <label><input type="radio" name="ai" value="none"> No AI</label>
-      <label><input type="radio" name="ai" value="partially"> Partially AI</label>
-    </fieldset>
+  <!-- A stand-in for Ditto's Release Builder (structure checked on the live site 2026-11-13), used only by
+       the tests: Create Release dialog, then Upload (audio, artwork) → Details → Schedule → Stores → Review.
+       Only one step is shown at a time, like the real builder. -->
+  <section id="dashboard">
+    <button type="button" id="create">Create Release</button>
+    <div class="modal" id="create-modal" hidden>
+      <input placeholder="Release Title" id="release-title"> <button type="button" id="start">Get Started</button>
+    </div>
+  </section>
+
+  <section id="step-audio" hidden>
+    <input type="file" id="AudioUploader" accept="audio/wav,audio/mp3,audio/flac" multiple>
+    <div class="modal" id="license" hidden>Add a License <button type="button">I Understand</button></div>
+    <a class="next" href="#">Next</a>
+  </section>
+  <section id="step-art" hidden>
+    <input type="file" id="ArtworkUploader" accept="image/jpeg">
+    <a class="next" href="#">Next</a>
+  </section>
+
+  <section id="step-details" hidden>
+    <div class="modal" id="title-review" hidden>Review Track Title
+      <input name="confirmTitle" placeholder="Track Title"> <button type="button" id="confirm-title">Confirm Title</button>
+    </div>
+    <input name="title" placeholder="Release Title" id="title">
+    <input name="copyrightHolder" placeholder="Name" id="copyright">
+    <input name="productionHolder" placeholder="Name" id="production">
+    <div class="multiselect" data-options="Pop|Dance|Rock"><span class="multiselect__single"></span><input class="multiselect__input" id="primaryGenre.id" placeholder="Select a genre"></div>
+    <div class="multiselect" data-options="Pop|Dance|Rock"><span class="multiselect__single"></span><input class="multiselect__input" id="secondaryGenre.id" placeholder="Optional"></div>
+    <div class="multiselect" data-options="English|Chinese (Mandarin)|Chinese (Cantonese)"><span class="multiselect__single">English</span><input class="multiselect__input" id="language.id"></div>
+    <label><input type="radio" name="ai-contribution" value="not_ai"> No AI</label>
+    <label><input type="radio" name="ai-contribution" value="partially_ai"> Partially AI</label>
+    <label><input type="radio" name="ai-contribution" value="entirely_ai"> Entirely AI</label>
+    <button type="button" id="add-artists">+Add Artists</button>
+    <div class="modal" id="artists" hidden>Your Artists
+      <button type="button" class="artist">Boss Sing</button> <button type="button" class="artist">Someone Else</button>
+      <button type="button" id="artists-confirm">Confirm</button>
+    </div>
+    <p id="artist"></p>
     <div id="tracks"></div>
-    <label>Release date <input id="date"></label>
-    <button type="button" id="submit">Submit release</button>
-  </form>
+    <a class="next" href="#">Next</a>
+  </section>
+
+  <section id="step-schedule" hidden>
+    <input placeholder="Select date" id="date" readonly>
+    <div class="dp__menu" hidden><button type="button" aria-label="Next month">›</button><span id="month"></span><div id="cells"></div></div>
+    <label><input type="radio" name="isPriorityDistro" id="PriorityDistro" value="true"> Priority Distro +$40</label>
+    <label><input type="radio" name="isPriorityDistro" id="StandardDistro" value="false"> Standard Distro</label>
+    <a class="next" href="#">Next</a>
+  </section>
+  <section id="step-stores" hidden>
+    <label><input type="checkbox" id="all"> Select All Stores</label>
+    <a class="next" href="#">Next</a>
+  </section>
+  <section id="step-review" hidden>
+    <button type="button" id="complete">Complete release</button>
+  </section>
   <p id="state">draft</p>
+
   <script>
-    document.getElementById('create').onclick = () => { document.getElementById('builder').hidden = false; };
-    document.getElementById('submit').onclick = () => { document.getElementById('state').textContent = 'SUBMITTED'; };
-    document.getElementById('audio').onchange = (e) => {
-      const box = document.getElementById('tracks');
+    const $ = (s, r = document) => r.querySelector(s);
+    const steps = ['step-audio', 'step-art', 'step-details', 'step-schedule', 'step-stores', 'step-review'];
+    let step = -1;
+    const show = (n) => { step = n; ['dashboard', ...steps].forEach((id, i) => { $('#' + id).hidden = i !== n + 1; }); if (steps[n] === 'step-details') reviewTitle(0); };
+    document.querySelectorAll('a.next').forEach((a) => a.onclick = (e) => { e.preventDefault(); show(step + 1); });
+    $('#create').onclick = () => { $('#create-modal').hidden = false; };
+    $('#start').onclick = () => { $('#title').value = $('#release-title').value; show(0); };
+    $('#complete').onclick = () => { $('#state').textContent = 'COMPLETED'; };
+
+    // Tracks are named after their files; titles starting with a number get the "Review Track Title" dialog.
+    const tracks = [];
+    function reviewTitle(i) {
+      const t = tracks[i];
+      if (!t || !/^\d/.test(t.title)) return;
+      $('[name=confirmTitle]').value = t.title;
+      $('#title-review').hidden = false;
+      $('#confirm-title').onclick = () => { t.title = $('[name=confirmTitle]').value; $('#title-review').hidden = true; renderRows(); };
+    }
+    $('#AudioUploader').onchange = (e) => {
+      [...e.target.files].forEach((f) => tracks.push({ title: f.name.replace(/\.\w+$/, ''), ai: {} }));
+      $('#license').hidden = false;
+      renderRows();
+    };
+    $('#license button').onclick = () => { $('#license').hidden = true; };
+    $('#ArtworkUploader').onchange = (e) => { document.body.dataset.art = e.target.files[0].name; };
+
+    // vue-multiselect stand-in: click opens, typing filters, Enter takes the first match.
+    document.querySelectorAll('.multiselect').forEach((m) => {
+      const input = $('input', m);
+      m.onclick = () => input.focus();
+      input.onkeydown = (e) => {
+        if (e.key !== 'Enter') return;
+        const hit = m.dataset.options.split('|').find((o) => o.toLowerCase().startsWith(input.value.toLowerCase()));
+        if (hit) $('.multiselect__single', m).textContent = hit;
+        input.value = '';
+      };
+    });
+
+    $('#add-artists').onclick = () => { $('#artists').hidden = false; };
+    document.querySelectorAll('.artist').forEach((b) => b.onclick = () => b.classList.toggle('picked'));
+    $('#artists-confirm').onclick = () => { $('#artist').textContent = [...document.querySelectorAll('.artist.picked')].map((b) => b.textContent).join(', '); $('#artists').hidden = true; };
+
+    function renderRows() {
+      const box = $('#tracks');
+      const open = $('#editor')?.dataset.track;
       box.innerHTML = '';
-      [...e.target.files].forEach((f, i) => {
+      tracks.forEach((t, i) => {
         const row = document.createElement('div');
-        row.innerHTML = `<span>${f.name}</span> <button type="button">Edit</button>`;
-        row.querySelector('button').onclick = () => {
-          document.getElementById('editor')?.remove();
-          const editor = document.createElement('div');
-          editor.id = 'editor';
-          editor.dataset.track = i + 1;
-          editor.innerHTML = '<label>Track title <input class="t"></label><label>Track mix version <input class="v"></label><label>Lyrics <textarea class="l"></textarea></label>';
-          editor.querySelectorAll('input,textarea').forEach((x) => x.oninput = () => { row.dataset[x.className] = x.value; });
-          row.after(editor);
-        };
+        Object.assign(row.dataset, { t: t.title, v: t.version || '', l: t.lyrics || '', c: t.credits || '', ai: JSON.stringify(t.ai) });
+        row.innerHTML = `<span>${t.title}</span> <button type="button">Edit Metadata</button>`;
+        row.querySelector('button').onclick = () => (String(i) === $('#editor')?.dataset.track ? $('#editor').remove() : openEditor(i));
         box.append(row);
       });
-    };
+      if (open !== undefined) openEditor(Number(open));
+    }
+    const dropdown = (cls) => `<div class="dropdown one-line small ${cls}"><a class="dropdown-toggle" href="#">${cls ? '2026' : 'AI Contribution Type'}</a><ul class="dropdown-menu">${(cls ? ['2026', '2025'] : ['No AI', 'Partly AI', 'Fully AI']).map((o) => `<li><a href="#"><span>${o}</span></a></li>`).join('')}</ul></div>`;
+    function openEditor(i) {
+      $('#editor')?.remove();
+      const t = tracks[i];
+      const ed = document.createElement('div');
+      ed.id = 'editor';
+      ed.dataset.track = i;
+      ed.innerHTML = `<input name="title" placeholder="Track Title" value="${t.title}"> <input name="mixVersion" placeholder="Optional (e.g. Radio Edit)">
+        ${dropdown('full-width')}
+        <label><input type="checkbox" id="LyricsInputToggle${i}"> Add Lyrics?</label> <textarea name="lyrics" hidden></textarea>
+        <label><input type="checkbox" id="ExplicitLyricsToggle${i}"> Explicit</label>
+        ${['Composer', 'Songwriter', 'Producer', 'Performer'].map((r, k) => `<div>${r} <input name="contributors.${k}.name" placeholder="Name">${dropdown('')}${k ? `<div class="multiselect" data-options="Lyricist|Producer|Lead Vocals"><span class="multiselect__single"></span><input class="multiselect__input" id="contributors[${k}]Roles"></div>` : ''}</div>`).join('')}
+        <button type="button" class="save">Save Metadata</button>`;
+      $('#tracks').children[i].after(ed);
+      $(`#LyricsInputToggle${i}`, ed).onchange = (e) => { $('[name=lyrics]', ed).hidden = !e.target.checked; };
+      ed.querySelectorAll('.dropdown').forEach((d) => {
+        $('.dropdown-toggle', d).onclick = (e) => { e.preventDefault(); d.classList.toggle('open'); };
+        d.querySelectorAll('li a').forEach((a) => a.onclick = (e) => { e.preventDefault(); $('.dropdown-toggle', d).textContent = a.textContent; d.classList.remove('open'); });
+      });
+      ed.querySelectorAll('.multiselect').forEach((m) => { const input = $('input', m); m.onclick = () => input.focus(); input.onkeydown = (e) => { if (e.key === 'Enter') { $('.multiselect__single', m).textContent = input.value; input.value = ''; } }; });
+      $('.save', ed).onclick = () => {
+        t.title = $('[name=title]', ed).value;
+        t.version = $('[name=mixVersion]', ed).value;
+        t.lyrics = $(`#LyricsInputToggle${i}`, ed).checked ? $('[name=lyrics]', ed).value : '';
+        t.credits = [0, 1, 2, 3].map((k) => $(`[name="contributors.${k}.name"]`, ed).value).join('/');
+        t.ai = [...ed.querySelectorAll('.dropdown:not(.full-width) .dropdown-toggle')].map((a) => a.textContent);
+        ed.remove();
+        renderRows();
+        // Like Ditto: saving opens the next track's editor, with its title check.
+        if (tracks[i + 1]) { openEditor(i + 1); reviewTitle(i + 1); }
+      };
+    }
+
+    // @vuepic/vue-datepicker stand-in: one month at a time, cells with id dp-YYYY-MM-DD.
+    let month = new Date(Date.UTC(2026, 10, 1));
+    function renderMonth() {
+      $('#month').textContent = month.toISOString().slice(0, 7);
+      const days = new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + 1, 0)).getUTCDate();
+      $('#cells').innerHTML = Array.from({ length: days }, (_, d) => { const id = `${month.toISOString().slice(0, 8)}${String(d + 1).padStart(2, '0')}`; return `<div class="dp__calendar_item" id="dp-${id}">${d + 1}</div>`; }).join('');
+      $('#cells').querySelectorAll('div').forEach((c) => c.onclick = () => { $('#date').value = c.id.slice(3); $('.dp__menu').hidden = true; });
+    }
+    $('#date').onclick = () => { $('.dp__menu').hidden = !$('.dp__menu').hidden; renderMonth(); };
+    $('[aria-label="Next month"]').onclick = () => { month = new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + 1, 1)); renderMonth(); };
   </script>
 </body>
 </html>
